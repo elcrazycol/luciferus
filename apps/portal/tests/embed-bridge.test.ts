@@ -446,3 +446,42 @@ describe('отказы в хендшейке', () => {
     fixture.bridge.destroy()
   })
 })
+
+describe('молчание до загрузки фрейма', () => {
+  /**
+   * Регрессия на шум в консоли: до события `load` во фрейме ещё `about:blank`,
+   * и `postMessage` с чужим targetOrigin выбрасывает предупреждение, которое
+   * выглядит как ошибка. Портал должен здороваться только после загрузки.
+   */
+  test('с autoStart: false приветствие не отправляется, пока не позовут', async () => {
+    const wire = createWire()
+
+    const bridge = createEmbedBridge({
+      launch: createLaunch(),
+      portalOrigin: PORTAL_ORIGIN,
+      postToGame: (message, targetOrigin) => wire.gameWindow.postMessage(message, targetOrigin),
+      listen: wire.listenFromGame,
+      isFromGame: wire.isFromGame,
+      setTimeoutFn: (handler, ms) => setTimeout(handler, ms),
+      clearTimeoutFn: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+      randomId: () => NONCE,
+      retryMs: 10,
+      initTimeoutMs: 120,
+      autoStart: false,
+      onState: () => {},
+    })
+
+    await wait(60)
+    expect(wire.countPortalMessages()).toBe(0)
+
+    // Событие load: портал здоровается и хендшейк идёт как обычно.
+    bridge.ping()
+    expect(wire.countPortalMessages()).toBeGreaterThan(0)
+
+    sendHelloFromGame(wire)
+    await wait(20)
+    expect(bridge.state.status).toBe('ready')
+
+    bridge.destroy()
+  })
+})

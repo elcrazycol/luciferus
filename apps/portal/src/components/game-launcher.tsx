@@ -113,6 +113,9 @@ export function GameLauncher({ launch }: { launch: GameLaunch }) {
       clearTimeoutFn: (id) => window.clearTimeout(id as number),
       randomId: () => crypto.randomUUID(),
       onState: setState,
+      // Здороваемся только после загрузки фрейма: до неё там about:blank,
+      // и postMessage с чужим targetOrigin ругается в консоль.
+      autoStart: false,
     })
 
     bridgeRef.current = bridge

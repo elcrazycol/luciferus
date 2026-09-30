@@ -41,6 +41,14 @@ export type EmbedBridgeDeps = {
   onState?: (state: EmbedBridgeState) => void
   initTimeoutMs?: number
   retryMs?: number
+  /**
+   * Начинать хендшейк сразу при создании моста.
+   *
+   * По умолчанию `true`, но в браузере это неверно: до события `load` во фрейме
+   * ещё `about:blank`, и `postMessage` с чужим targetOrigin выбрасывает
+   * предупреждение в консоль. Портал передаёт `false` и здоровается по `load`.
+   */
+  autoStart?: boolean
 }
 
 export type EmbedBridge = {
@@ -173,38 +181,62 @@ export function createEmbedBridge(deps: EmbedBridgeDeps): EmbedBridge {
 
   const unsubscribe = deps.listen(handleMessage)
 
-  sendInit()
-  scheduleRetry()
+  let started = false
 
-  timeoutTimer = deps.setTimeoutFn(() => {
-    if (destroyed || ready) return
-    stopTimers()
+  /**
+   * Начинает хендшейк: первое приветствие, повторы и таймаут.
+   *
+   * Вызывается один раз — либо сразу, либо по событию `load` у iframe. До этого
+   * момента слать нечего: во фрейме ещё пустая страница.
+   */
+  function start(): void {
+    if (started || destroyed || ready) return
+    started = true
 
-    const message = {
-      type: 'casino:error',
-      protocol: EMBED_PROTOCOL_VERSION,
-      code: 'handshake_timeout' as const,
-      message: 'Игра не ответила на приветствие портала',
-    }
+    sendInit()
+    scheduleRetry()
+    startTimeout()
+  }
 
-    for (const origin of allowedOrigins) {
-      deps.postToGame(message, origin)
-    }
+  function startTimeout(): void {
+    timeoutTimer = deps.setTimeoutFn(() => {
+      if (destroyed || ready) return
+      stopTimers()
 
-    setState({
-      status: 'error',
-      code: 'handshake_timeout',
-      message:
-        'Игра не ответила за 10 секунд. Проверьте, что она подключила SDK и объявила свой origin',
-    })
-  }, timeoutMs)
+      const message = {
+        type: 'casino:error',
+        protocol: EMBED_PROTOCOL_VERSION,
+        code: 'handshake_timeout' as const,
+        message: 'Игра не ответила на приветствие портала',
+      }
+
+      for (const origin of allowedOrigins) {
+        deps.postToGame(message, origin)
+      }
+
+      setState({
+        status: 'error',
+        code: 'handshake_timeout',
+        message:
+          'Игра не ответила за 10 секунд. Проверьте, что она подключила SDK и объявила свой origin',
+      })
+    }, timeoutMs)
+  }
+
+  if (deps.autoStart !== false) start()
 
   return {
     get state() {
       return state
     },
 
+    /** Поздороваться ещё раз. Первый вызов запускает весь хендшейк. */
     ping() {
+      if (!started) {
+        start()
+        return
+      }
+
       sendInit()
     },
 

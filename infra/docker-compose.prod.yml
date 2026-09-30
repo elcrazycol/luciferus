@@ -164,6 +164,25 @@ services:
     network_mode: host
     mem_limit: 64m
 
+  # Второй туннель — для эталонной игры. Она живёт на своём домене, а Cloudflare
+  # привязывает туннель к конкретному хостнейму, поэтому их два.
+  #
+  # Двух туннелей можно избежать: один туннель обслуживает сколько угодно
+  # хостнеймов, и это правильнее — меньше контейнеров и токенов. Оставлено так,
+  # потому что так создано в панели.
+  cloudflared-game:
+    <<: *restart
+    profiles: ['tunnel']
+    image: cloudflare/cloudflared:latest
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARE_TUNNEL_TOKEN_GAME:-}
+    network_mode: host
+    mem_limit: 64m
+
   # Разовые задачи: миграции и сиды. Запускаются вручную, сами не стартуют.
   migrate:
     profiles: ['tools']
