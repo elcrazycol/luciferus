@@ -12,6 +12,7 @@ import {
 import { parseDecimal, toDecimal } from '@luciferus/protocol/money'
 import { CasinoError } from '../errors'
 import type {
+  FairRound,
   FetchLike,
   MessageEventLike,
   RollbackInput,
@@ -141,6 +142,7 @@ export function createPostMessageTransport(deps: PostMessageTransportDeps): Wall
         balance: sessionMessage.wallet.balance,
         currency: sessionMessage.wallet.currency,
         limits: sessionMessage.limits,
+        fairMode: sessionMessage.fairMode,
       })
       return
     }
@@ -236,6 +238,26 @@ export function createPostMessageTransport(deps: PostMessageTransportDeps): Wall
       })
     },
 
+    async fairNext(input: { roundId: string }): Promise<FairRound> {
+      const payload = await callApi('/v1/game/fair/next', { method: 'POST', body: '{}' })
+      const body = (typeof payload === 'object' && payload !== null ? payload : {}) as Record<
+        string,
+        unknown
+      >
+
+      if (typeof body.nonce !== 'number' || typeof body.random !== 'string') {
+        throw new CasinoError('internal_error', 'Портал вернул некорректную случайность раунда')
+      }
+
+      return {
+        roundId: input.roundId,
+        nonce: body.nonce,
+        serverSeedHash: typeof body.serverSeedHash === 'string' ? body.serverSeedHash : '',
+        clientSeed: typeof body.clientSeed === 'string' ? body.clientSeed : '',
+        random: body.random,
+      }
+    },
+
     async bet(input: WalletOperationInput) {
       return toOutput(
         await callApi('/v1/game/bet', {
@@ -244,6 +266,8 @@ export function createPostMessageTransport(deps: PostMessageTransportDeps): Wall
             amount: input.amount,
             roundId: input.roundId,
             ...(input.meta ? { meta: input.meta } : {}),
+            // В корне тела, а не в meta: сервер проверяет это до списания денег.
+            ...(input.fair ? { fair: input.fair } : {}),
           }),
         }),
       )

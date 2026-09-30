@@ -1,3 +1,5 @@
+import { pickWeighted, randomFloats } from '@luciferus/fairness'
+
 /**
  * Математика слота — чистая, без DOM и без SDK.
  *
@@ -56,9 +58,25 @@ export function pickSymbol(random: () => number = Math.random): SymbolId {
   return SYMBOLS[SYMBOLS.length - 1]?.id ?? 'cherry'
 }
 
-/** Три барабана. */
+/** Три барабана. Используется только для тестов распределения — в игре есть честный путь ниже. */
 export function spin(random: () => number = Math.random): SymbolId[] {
   return [pickSymbol(random), pickSymbol(random), pickSymbol(random)]
+}
+
+/** Сколько барабанов. */
+export const REEL_COUNT = 3
+
+const WEIGHTED_SYMBOLS = SYMBOLS.map((symbol) => ({ item: symbol.id, weight: symbol.weight }))
+
+/**
+ * Исход раунда из случайности, выданной порталом.
+ *
+ * Это и есть весь «движок»: та же случайность при тех же весах всегда даёт те же
+ * барабаны, поэтому проверяющий может повторить расчёт за игру. Никакого своего
+ * рандома здесь быть не должно — иначе проверять было бы нечего.
+ */
+export function reelsFromRandom(randomHex: string): SymbolId[] {
+  return randomFloats(randomHex, REEL_COUNT).map((value) => pickWeighted(WEIGHTED_SYMBOLS, value))
 }
 
 /** Во сколько раз ставка умножается на этом наборе. Ноль — проигрыш. */

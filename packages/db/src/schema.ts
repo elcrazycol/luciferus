@@ -1,6 +1,8 @@
+import { sql } from 'drizzle-orm'
 import {
   boolean,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -106,6 +108,58 @@ export const ledger = pgTable(
     // Статистика игр считается агрегатом по леджеру, поэтому выборка по игре
     // должна быть индексной, а не сканированием всего журнала.
     index('ledger_game_idx').on(t.gameId),
+    /**
+     * Один nonce проверимого раунда — ровно одна ставка.
+     *
+     * Без этого индекса игру можно было бы попросить поставить дважды с одним и
+     * тем же случайным числом, то есть переиграть уже известный исход.
+     */
+    uniqueIndex('ledger_fair_nonce_uq')
+      .on(t.userId, t.gameId, sql`(meta -> 'fair' ->> 'nonce')`)
+      .where(sql`meta ? 'fair'`),
+  ],
+)
+
+// ─── Проверяемая честность ───────────────────────────────────────────────────────
+
+/**
+ * Пара сидов для проверяемой честности: commit-reveal.
+ *
+ * `serverSeed` скрыт до раскрытия, а его хэш публикуется сразу — это и есть коммит.
+ * Серверный сид переиспользуется, а номер раунда (`nonce`) растёт с каждой игрой,
+ * поэтому раскрывать сид нужно редко: только когда игрок сам захочет.
+ *
+ * Одна активная пара на игрока и игру: unique-индекс с условием `revealed_at is null`
+ * не даёт завести вторую.
+ */
+export const seedPairs = pgTable(
+  'seed_pairs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    gameId: uuid('game_id')
+      .notNull()
+      .references(() => games.id, { onDelete: 'cascade' }),
+    /** Скрыт, пока пара не раскрыта. Раскрытый остаётся навсегда — иначе нечем проверять. */
+    serverSeed: text('server_seed').notNull(),
+    /** `sha256(serverSeed)`. Публикуется сразу и не меняется. */
+    serverSeedHash: text('server_seed_hash').notNull(),
+    /** Клиентский сид виден игроку и может быть заменён. */
+    clientSeed: text('client_seed').notNull(),
+    /** Последний выданный номер раунда. Увеличивается атомарно. */
+    nonce: integer('nonce').notNull().default(0),
+    /** Версия алгоритма: смена формата не должна ломать проверку прошлых раундов. */
+    algorithm: text('algorithm').notNull().default('hmac-sha256:v1'),
+    /** `null` — пара текущая. Заполнено — раскрыта и заменена новой. */
+    revealedAt: timestamp('revealed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('seed_pairs_active_uq').on(t.userId, t.gameId).where(sql`${t.revealedAt} is null`),
+    index('seed_pairs_user_idx').on(t.userId),
+    index('seed_pairs_game_idx').on(t.gameId),
   ],
 )
 
@@ -222,3 +276,4 @@ export type Provider = typeof providers.$inferSelect
 export type Game = typeof games.$inferSelect
 export type NewGame = typeof games.$inferInsert
 export type GameVersion = typeof gameVersions.$inferSelect
+export type SeedPair = typeof seedPairs.$inferSelect

@@ -17,6 +17,7 @@
       "dependencies": {
         "@luciferus/config": "workspace:*",
         "@luciferus/db": "workspace:*",
+        "@luciferus/fairness": "workspace:*",
         "@luciferus/protocol": "workspace:*",
         "drizzle-orm": "^0.45.3",
         "hono": "^4.13.11",
@@ -30,6 +31,7 @@
       "name": "@luciferus/example-game",
       "version": "1.0.0",
       "dependencies": {
+        "@luciferus/fairness": "workspace:*",
         "@luciferus/sdk": "workspace:*",
       },
       "devDependencies": {
@@ -41,6 +43,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@luciferus/config": "workspace:*",
+        "@luciferus/fairness": "workspace:*",
         "@luciferus/protocol": "workspace:*",
         "@luciferus/sdk": "workspace:*",
         "next": "^16.3.7",
@@ -76,6 +79,13 @@
         "typescript": "^5.9.3",
       },
     },
+    "packages/fairness": {
+      "name": "@luciferus/fairness",
+      "version": "1.0.0",
+      "devDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/protocol": {
       "name": "@luciferus/protocol",
       "version": "0.1.0",
@@ -91,6 +101,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@luciferus/config": "workspace:*",
+        "@luciferus/fairness": "workspace:*",
         "@luciferus/protocol": "workspace:*",
       },
       "devDependencies": {
@@ -250,6 +261,8 @@
     "@luciferus/db": ["@luciferus/db@workspace:packages/db"],
 
     "@luciferus/example-game": ["@luciferus/example-game@workspace:apps/example-game"],
+
+    "@luciferus/fairness": ["@luciferus/fairness@workspace:packages/fairness"],
 
     "@luciferus/portal": ["@luciferus/portal@workspace:apps/portal"],
 

@@ -14,6 +14,7 @@ import { AppError } from './lib/errors'
 import { pingRedis } from './lib/redis'
 import { adminRoutes } from './routes/admin'
 import { authRoutes } from './routes/auth'
+import { fairnessRoutes } from './routes/fairness'
 import { gameRoutes } from './routes/game'
 import { gamesRoutes } from './routes/games'
 import { providerRoutes } from './routes/providers'
@@ -55,6 +56,7 @@ for (const path of [
   '/v1/games',
   '/v1/games/*',
   '/v1/providers/*',
+  '/v1/fair/*',
   '/v1/admin/*',
   '/v1/config',
 ]) {
@@ -119,6 +121,7 @@ app.route('/v1/games', gamesRoutes)
 app.route('/v1/providers', providerRoutes)
 app.route('/v1/auth', authRoutes)
 app.route('/v1/wallet', walletRoutes)
+app.route('/v1/fair', fairnessRoutes)
 app.route('/v1/admin', adminRoutes)
 
 // Игровые маршруты живут отдельно от портальных: у них другая авторизация

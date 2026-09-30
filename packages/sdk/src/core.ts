@@ -7,6 +7,9 @@ import type {
   CasinoMode,
   CasinoPlayer,
   CasinoSnapshot,
+  FairClaimInput,
+  FairMode,
+  FairRound,
   RoundOptions,
   RoundResult,
   TransportHandlers,
@@ -28,6 +31,7 @@ export type CreateCasinoDeps = {
 type CasinoState = {
   mode: CasinoMode
   gameSlug: string | null
+  fairMode: FairMode
   player: CasinoPlayer | null
   balance: number
   currency: string
@@ -49,6 +53,7 @@ export function createCasino(deps: CreateCasinoDeps) {
   const state: CasinoState = {
     mode: 'mock',
     gameSlug: null,
+    fairMode: 'client',
     player: null,
     balance: 0,
     currency: '',
@@ -99,6 +104,7 @@ export function createCasino(deps: CreateCasinoDeps) {
     return {
       mode: state.mode,
       gameSlug: state.gameSlug,
+      fairMode: state.fairMode,
       player: state.player,
       balance: state.balance,
       currency: state.currency,
@@ -116,6 +122,7 @@ export function createCasino(deps: CreateCasinoDeps) {
     state.player = session.player
     state.currency = session.currency
     state.limits = session.limits
+    state.fairMode = session.fairMode
     setBalance(session.balance)
   }
 
@@ -164,6 +171,32 @@ export function createCasino(deps: CreateCasinoDeps) {
     }
   }
 
+  /**
+   * Разбирает опции раунда на части запроса.
+   *
+   * Данные честности уезжают отдельным полем и ТОЛЬКО со ставкой: на номере раунда
+   * стоит уникальный индекс «одна ставка на номер», и выплата того же раунда его
+   * бы нарушила.
+   */
+  function buildInput(options: RoundOptions): {
+    meta?: Record<string, unknown>
+    fair?: FairClaimInput
+  } {
+    return {
+      ...(options.meta ? { meta: options.meta } : {}),
+      ...(options.fair
+        ? {
+            fair: {
+              nonce: options.fair.nonce,
+              serverSeedHash: options.fair.serverSeedHash,
+              random: options.fair.random,
+              ...(options.fair.outcome ? { outcome: options.fair.outcome } : {}),
+            },
+          }
+        : {}),
+    }
+  }
+
   function normalizeAmount(amount: number, label: string): number {
     if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
       throw new CasinoError('bad_request', `${label} должна быть положительным числом`)
@@ -183,14 +216,22 @@ export function createCasino(deps: CreateCasinoDeps) {
     const previous = state.balance
 
     try {
-      const meta = options.meta ? { meta: options.meta } : {}
+      const input = buildInput(options)
 
+      // Данные честности нужны только ставке — исход фиксируется вместе с ней.
       const result =
         type === 'bet'
-          ? await activeTransport.bet({ amount: amount ?? 0, roundId, ...meta })
+          ? await activeTransport.bet({ amount: amount ?? 0, roundId, ...input })
           : type === 'payout'
-            ? await activeTransport.payout({ amount: amount ?? 0, roundId, ...meta })
-            : await activeTransport.rollback({ roundId, ...meta })
+            ? await activeTransport.payout({
+                amount: amount ?? 0,
+                roundId,
+                ...(input.meta ? { meta: input.meta } : {}),
+              })
+            : await activeTransport.rollback({
+                roundId,
+                ...(input.meta ? { meta: input.meta } : {}),
+              })
 
       setBalance(result.balance)
 
@@ -243,6 +284,11 @@ export function createCasino(deps: CreateCasinoDeps) {
       return state.limits
     },
 
+    /** Режим честности игры, как её объявил автор. */
+    get fairMode(): FairMode {
+      return state.fairMode
+    },
+
     /** Заполняется, если хендшейк провалился и SDK ушёл в мок-режим. */
     get handshakeError(): CasinoError | null {
       return handshakeError
@@ -275,7 +321,29 @@ export function createCasino(deps: CreateCasinoDeps) {
     },
 
     bet(amount: number, options: RoundOptions = {}): Promise<RoundResult> {
+      // Проверяем до запроса: иначе игра получит от сервера невнятную ошибку,
+      // хотя проблема очевидна уже здесь.
+      if (state.fairMode === 'provably-fair' && !options.fair) {
+        return Promise.reject(
+          new CasinoError(
+            'bad_request',
+            'Игра в проверяемом режиме: сначала Casinos.fair.start(), потом ставка',
+          ),
+        )
+      }
+
       return perform('bet', normalizeAmount(amount, 'Ставка'), options)
+    },
+
+    /**
+     * Запрашивает случайность на раунд.
+     *
+     * Вызывать перед каждой ставкой в проверяемом режиме: номер раунда нельзя
+     * переиспользовать, иначе сервер отклонит ставку как повтор.
+     */
+    async fairStart(roundId?: string): Promise<FairRound> {
+      await boot
+      return activeTransport.fairNext({ roundId: roundId ?? api.roundId() })
     },
 
     payout(amount: number, options: RoundOptions = {}): Promise<RoundResult> {

@@ -6,6 +6,13 @@ import type {
 } from '@luciferus/protocol/auth'
 import type { GameLaunch } from '@luciferus/protocol/embed'
 import type {
+  FairRoundsResponse,
+  SeedPairDto,
+  SeedPairsResponse,
+  VerifyRoundRequest,
+  VerifyRoundResponse,
+} from '@luciferus/protocol/fairness'
+import type {
   GameCard,
   GameListQuery,
   GameListResponse,
@@ -204,6 +211,61 @@ export function patchGame(
 
 export function getMyGames(token: string): Promise<{ games: OwnGameCard[]; total: number }> {
   return apiFetch('/v1/games/mine', { token })
+}
+
+// ─── Проверяемая честность ───────────────────────────────────────────────────────
+
+export function getSeedPairs(token: string, gameSlug?: string): Promise<SeedPairsResponse> {
+  const query = gameSlug ? `?gameSlug=${encodeURIComponent(gameSlug)}` : ''
+  return apiFetch<SeedPairsResponse>(`/v1/fair/seeds${query}`, { token })
+}
+
+export function rotateSeeds(
+  token: string,
+  gameSlug: string,
+  clientSeed?: string,
+): Promise<{ revealed: SeedPairDto; current: SeedPairDto }> {
+  return apiFetch('/v1/fair/rotate', {
+    method: 'POST',
+    token,
+    body: clientSeed ? { gameSlug, clientSeed } : { gameSlug },
+  })
+}
+
+export function setClientSeed(
+  token: string,
+  gameSlug: string,
+  clientSeed: string,
+): Promise<{ pair: SeedPairDto }> {
+  return apiFetch('/v1/fair/client-seed', {
+    method: 'POST',
+    token,
+    body: { gameSlug, clientSeed },
+  })
+}
+
+/**
+ * Проверка на сервере.
+ *
+ * Нужна только для удобства: настоящая проверка считается в браузере игрока
+ * и не требует доверия к порталу.
+ */
+export function verifyRoundOnServer(
+  token: string,
+  body: VerifyRoundRequest,
+): Promise<VerifyRoundResponse> {
+  return apiFetch('/v1/fair/verify', { method: 'POST', token, body })
+}
+
+export function getFairRounds(
+  token: string,
+  gameSlug: string,
+  limit = 20,
+): Promise<FairRoundsResponse> {
+  return apiFetch<FairRoundsResponse>(
+    `/v1/fair/rounds?gameSlug=${encodeURIComponent(gameSlug)}&limit=${limit}`,
+    { token },
+  )
 }
 
 // ─── Админка ─────────────────────────────────────────────────────────────────────

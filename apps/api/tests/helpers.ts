@@ -49,6 +49,7 @@ export async function createTestGame(
   options: {
     allowedOrigins?: string[]
     limits?: { minBet: number; maxBet: number; maxWin: number }
+    fairMode?: 'client' | 'provably-fair'
   } = {},
 ): Promise<{ id: string; slug: string; embedUrl: string }> {
   const slug = `spec-game-${Math.random().toString(36).slice(2, 10)}`
@@ -62,6 +63,7 @@ export async function createTestGame(
       allowedOrigins: options.allowedOrigins ?? ['https://game.test'],
       status: 'live',
       limits: options.limits ?? { minBet: 0.1, maxBet: 100, maxWin: 5000 },
+      fairMode: options.fairMode ?? 'client',
     })
     .returning({ id: games.id, slug: games.slug, embedUrl: games.embedUrl })
 
@@ -91,6 +93,7 @@ export async function createGameFixture(
   options: {
     allowedOrigins?: string[]
     limits?: { minBet: number; maxBet: number; maxWin: number }
+    fairMode?: 'client' | 'provably-fair'
   } = {},
 ) {
   const { user, session } = await createTestUser()

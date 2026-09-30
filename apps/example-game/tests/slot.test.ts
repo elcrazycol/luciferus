@@ -4,6 +4,7 @@ import {
   DECLARED_RTP,
   evaluateMultiplier,
   pickSymbol,
+  reelsFromRandom,
   SYMBOLS,
   type SymbolId,
   spin,
@@ -137,5 +138,58 @@ describe('честность генератора', () => {
       const actual = (counts.get(symbol.id) ?? 0) / (runs * 3)
       expect(Math.abs(actual - expected)).toBeLessThan(0.01)
     }
+  })
+})
+
+describe('исход из случайности портала', () => {
+  test('детерминирован: одна случайность — одни барабаны', () => {
+    const random = '9f3a'.repeat(16)
+    expect(reelsFromRandom(random)).toEqual(reelsFromRandom(random))
+  })
+
+  test('всегда возвращает ровно три допустимых символа', () => {
+    const ids = SYMBOLS.map((symbol) => symbol.id)
+
+    for (const seed of ['0'.repeat(64), 'f'.repeat(64), 'a1b2c3d4'.repeat(8)]) {
+      const reels = reelsFromRandom(seed)
+
+      expect(reels).toHaveLength(3)
+      for (const reel of reels) {
+        expect(ids).toContain(reel)
+      }
+    }
+  })
+
+  test('разная случайность даёт разные наборы', () => {
+    const seen = new Set<string>()
+
+    // Хэш читается кусками, по одному на барабан, поэтому случайность обязана
+    // различаться во всех кусках: меняя только первый, мы бы получили одни и те
+    // же второй и третий барабаны.
+    // `Math.imul` обязателен: обычное умножение выходит за пределы точности
+    // JS-чисел и генератор вырождается в короткий цикл.
+    let state = 987654321
+    const nextChunk = () => {
+      state = (Math.imul(state, 1103515245) + 12345) >>> 0
+      return state.toString(16).padStart(8, '0')
+    }
+
+    for (let index = 0; index < 40; index += 1) {
+      const seed = Array.from({ length: 8 }, nextChunk).join('')
+      seen.add(reelsFromRandom(seed).join('-'))
+    }
+
+    expect(seen.size).toBeGreaterThan(10)
+  })
+
+  test('крайние значения дают крайние символы', () => {
+    // '0' — минимальные числа, 'f' — максимальные: проверяем, что таблица весов
+    // действительно упорядочена от частого к редкому.
+    expect(reelsFromRandom('0'.repeat(64))).toEqual(['cherry', 'cherry', 'cherry'])
+    expect(reelsFromRandom('f'.repeat(64))).toEqual(['seven', 'seven', 'seven'])
+  })
+
+  test('не-hex случайность отклоняется', () => {
+    expect(() => reelsFromRandom('не-случайность')).toThrow()
   })
 })

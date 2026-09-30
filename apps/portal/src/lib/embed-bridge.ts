@@ -132,6 +132,7 @@ export function createEmbedBridge(deps: EmbedBridgeDeps): EmbedBridge {
       },
       wallet: launch.wallet,
       limits: launch.game.limits,
+      fairMode: launch.game.fairMode,
     }
   }
 

@@ -1,3 +1,4 @@
+import { fairClaimSchema } from '@luciferus/protocol/fairness'
 import {
   betRequestSchema,
   payoutRequestSchema,
@@ -5,10 +6,11 @@ import {
 } from '@luciferus/protocol/wallet'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { AppError } from '../lib/errors'
+import { AppError, isUniqueViolation } from '../lib/errors'
 import { parseJson } from '../lib/http'
 import { enforceRateLimit } from '../lib/rate-limit'
 import { extractSessionToken } from '../middleware/session'
+import { startRound, validateClaim } from '../services/fairness'
 import { authenticateGameRequest, type GameContext } from '../services/game'
 import { getWalletSummary, payOut, placeBet, rollbackRound } from '../services/wallet'
 
@@ -59,6 +61,20 @@ function scopedKey(gameId: string, key: string | undefined): string | undefined 
   return key ? `game:${gameId}:${key}` : undefined
 }
 
+/**
+ * Проверяемый режим: игра просит случайность на раунд.
+ *
+ * Доступно только играм, объявленным как `provably-fair`: для остальных проверять
+ * нечего, и молча выдавать им сиды значило бы делать вид, что честность есть.
+ */
+gameRoutes.post('/fair/next', async (c) => {
+  const { userId, game } = c.get('game')
+  const limit = await enforceRateLimit(`game:fair:${userId}`, 240, 60)
+  c.header('X-RateLimit-Remaining', String(limit.remaining))
+
+  return c.json(await startRound(userId, game.slug))
+})
+
 gameRoutes.get('/balance', async (c) => {
   const { userId } = c.get('game')
   const wallet = await getWalletSummary(userId)
@@ -66,27 +82,69 @@ gameRoutes.get('/balance', async (c) => {
   return c.json({ balance: wallet.balance, currency: wallet.currency })
 })
 
+const gameBetRequestSchema = betRequestSchema.extend({ fair: fairClaimSchema.optional() })
+
 gameRoutes.post('/bet', async (c) => {
   const { userId, game } = c.get('game')
   const limit = await enforceRateLimit(`game:bet:${userId}`, 240, 60)
   c.header('X-RateLimit-Remaining', String(limit.remaining))
 
-  const body = await parseJson(c, betRequestSchema)
+  const body = await parseJson(c, gameBetRequestSchema)
+
+  /**
+   * В проверяемом режиме ставка обязана приложить данные раунда, и они проверяются
+   * до списания денег: сервер пересчитывает случайность из своего сида и сверяет.
+   * Игра, подсунувшая своё число, получит отказ, а не сыгранный раунд.
+   *
+   * Данные честности пишутся ТОЛЬКО на ставку: на них стоит уникальный индекс
+   * «один номер раунда — одна ставка», и выплата того же раунда его бы нарушила.
+   */
+  let fairMeta: Record<string, unknown> | undefined
+
+  if (game.fairMode === 'provably-fair') {
+    if (!body.fair) {
+      throw AppError.conflict(
+        'Игра объявлена как provably-fair: ставка обязана приложить данные раунда',
+      )
+    }
+
+    const validated = await validateClaim({ userId, game, claim: body.fair })
+
+    fairMeta = {
+      pairId: validated.pairId,
+      nonce: body.fair.nonce,
+      serverSeedHash: body.fair.serverSeedHash,
+      clientSeed: validated.clientSeed,
+      random: body.fair.random,
+      ...(body.fair.outcome ? { outcome: body.fair.outcome } : {}),
+    }
+  }
 
   // `gameSlug` из тела игнорируется намеренно: играть можно только в ту игру,
   // на которую выдан токен, — иначе лимиты одной игры применялись бы к другой.
-  const result = await placeBet({
-    userId,
-    amount: body.amount,
-    roundId: body.roundId,
-    gameSlug: game.slug,
-    ...(body.meta ? { meta: body.meta } : {}),
-    ...(scopedKey(game.id, body.idempotencyKey)
-      ? { idempotencyKey: scopedKey(game.id, body.idempotencyKey) }
-      : {}),
-  })
+  try {
+    const result = await placeBet({
+      userId,
+      amount: body.amount,
+      roundId: body.roundId,
+      gameSlug: game.slug,
+      ...(body.meta || fairMeta
+        ? { meta: { ...body.meta, ...(fairMeta ? { fair: fairMeta } : {}) } }
+        : {}),
+      ...(scopedKey(game.id, body.idempotencyKey)
+        ? { idempotencyKey: scopedKey(game.id, body.idempotencyKey) }
+        : {}),
+    })
 
-  return c.json(result)
+    return c.json(result)
+  } catch (error) {
+    // Уникальный индекс по номеру раунда: этим же номером уже сыграли.
+    if (isUniqueViolation(error) && fairMeta) {
+      throw AppError.conflict('Раунд с таким номером уже сыгран — запросите новый')
+    }
+
+    throw error
+  }
 })
 
 gameRoutes.post('/payout', async (c) => {

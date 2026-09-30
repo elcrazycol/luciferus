@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: '/', label: 'Лобби' },
   { href: '/games', label: 'Каталог' },
   { href: '/wallet', label: 'Кошелёк' },
+  { href: '/fairness', label: 'Честность' },
   { href: '/developers', label: 'Разработчикам' },
 ] as const
 

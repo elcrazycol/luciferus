@@ -11,7 +11,8 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@luciferus/sdk": "workspace:*"
+    "@luciferus/sdk": "workspace:*",
+    "@luciferus/fairness": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

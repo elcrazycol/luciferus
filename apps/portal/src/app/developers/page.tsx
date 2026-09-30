@@ -118,10 +118,35 @@ await c.rollback({ roundId: round })        // если раунд сорвал�
         <Prop name="Casinos.payout(amount, opts)" type="Promise<RoundResult>" />
         <Prop name="Casinos.rollback(opts)" type="Promise<RoundResult>" />
         <Prop name="Casinos.refresh()" type="Promise<number>" />
+        <Prop name="Casinos.fairStart(roundId?)" type="Promise<FairRound>">
+          Случайность раунда. Обязательна, если игра объявлена как провably-fair.
+        </Prop>
         <Prop name="Casinos.on(event, handler)" type="() => void">
           События: ready, balance, error. Возвращает отписку.
         </Prop>
       </ul>
+
+      <h2 className="mt-12 text-lg font-semibold text-white">Проверяемая честность</h2>
+      <div className="mt-3 space-y-3 text-sm leading-6 text-white/60">
+        <p>
+          Объявите игру как <code className="text-white/70">provably-fair</code> — и портал начнёт
+          выдавать случайность на каждый раунд, а игроки смогут проверять её сами.
+        </p>
+        <Code>{`const round = await c.fairStart()          // номер, коммит, клиентский сид, random
+const reels = mapReels(round.random)       // ваша таблица весов
+
+await c.bet(10, { roundId: round.roundId, fair: round })
+await c.payout(win, { roundId: round.roundId })`}</Code>
+        <p>
+          Портал пересчитывает случайность из своего сида и сверяет с той, что приложила игра, —{' '}
+          <b className="text-white/80">до списания ставки</b>. Подсунуть своё число не получится.
+        </p>
+        <p className="rounded-xl border border-gold-500/25 bg-gold-500/5 p-4 text-xs text-gold-300">
+          Важно: превращайте <code>round.random</code> в исход детерминированно. При той же
+          случайности должен получаться тот же результат — иначе проверка невозможна, и честность
+          остаётся только на словах.
+        </p>
+      </div>
 
       <h2 className="mt-12 text-lg font-semibold text-white">Как это работает</h2>
       <div className="mt-3 space-y-3 text-sm leading-6 text-white/60">

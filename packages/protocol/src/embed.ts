@@ -60,6 +60,8 @@ export type SessionMessage = {
   player: { id: string; username: string; displayName: string }
   wallet: { balance: string; currency: string }
   limits: { minBet: number; maxBet: number; maxWin: number }
+  /** Режим честности игры: в проверяемом SDK обязан прикладывать данные раунда. */
+  fairMode: 'client' | 'provably-fair'
 }
 
 export type BalanceMessage = {
@@ -175,6 +177,7 @@ export function readSessionMessage(value: unknown): SessionMessage | null {
       maxBet: isFiniteNumber(limits.maxBet) ? limits.maxBet : Number.MAX_SAFE_INTEGER,
       maxWin: isFiniteNumber(limits.maxWin) ? limits.maxWin : Number.MAX_SAFE_INTEGER,
     },
+    fairMode: value.fairMode === 'provably-fair' ? 'provably-fair' : 'client',
   }
 }
 

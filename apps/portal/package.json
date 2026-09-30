@@ -16,7 +16,8 @@
     "next": "^16.3.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "@luciferus/sdk": "workspace:*"
+    "@luciferus/sdk": "workspace:*",
+    "@luciferus/fairness": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

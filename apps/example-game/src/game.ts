@@ -1,5 +1,11 @@
 import type { Casino } from '@luciferus/sdk'
-import { DECLARED_RTP, evaluateMultiplier, PAYTABLE_DISPLAY, SYMBOLS, spin } from './slot'
+import {
+  DECLARED_RTP,
+  evaluateMultiplier,
+  PAYTABLE_DISPLAY,
+  reelsFromRandom,
+  SYMBOLS,
+} from './slot'
 
 /**
  * Эталонная игра: трёхбарабанный слот, подключённый к порталу через SDK.
@@ -126,22 +132,30 @@ async function main(): Promise<void> {
     let payoutDone = false
 
     try {
-      // 1. Ставка. Пока она не прошла, крутить нельзя — иначе выигрыш
-      //    считался бы из воздуха.
-      await casino.bet(currentBet, { roundId, meta: { game: 'lucky-7s' } })
+      // 1. Случайность раунда. Её выдаёт портал: слот объявлен как
+      //    provably-fair, и подсунуть своё число он не имеет права.
+      const fair = await casino.fairStart(roundId)
+
+      // 2. Ставка. Пока она не прошла, крутить нельзя — иначе выигрыш считался
+      //    бы из воздуха. Вместе со ставкой уезжает и случайность раунда.
+      await casino.bet(currentBet, {
+        roundId,
+        fair: { ...fair, outcome: { game: 'lucky-7s' } },
+      })
       betPlaced = true
 
-      // 2. Исход. Здесь его считает клиент: игра объявлена как `fairMode: "client"`.
-      const outcome = spin()
+      // 3. Исход: превращаем выданную случайность в барабаны. Расчёт детерминирован,
+      //    поэтому его может повторить любой проверяющий.
+      const outcome = reelsFromRandom(fair.random)
       await animate(elements.reels, outcome)
 
       const multiplier = evaluateMultiplier(outcome)
       renderReels(outcome.map(glyphOf))
 
-      // 3. Выплата. Повтор с тем же roundId не удвоит выигрыш.
+      // 4. Выплата. Повтор с тем же roundId не удвоит выигрыш.
       if (multiplier > 0) {
         const win = Math.round(currentBet * multiplier * 100) / 100
-        await casino.payout(win, { roundId, meta: { multiplier } })
+        await casino.payout(win, { roundId, meta: { multiplier, reels: outcome } })
         payoutDone = true
 
         setResult(`Выигрыш ${casino.formatBalance(win)}  (×${multiplier})`, 'win')

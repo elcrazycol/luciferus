@@ -362,3 +362,57 @@ describe('игровой домен', () => {
     expect(targets).toEqual([PORTAL_ORIGIN])
   })
 })
+
+describe('данные честности в запросе', () => {
+  /**
+   * Регрессия на реальную ошибку: SDK клал случайность раунда внутрь `meta`,
+   * а сервер ждёт её отдельным полем. Ни юнит-тесты, ни тесты API этого не
+   * видели — расхождение поймалось только при живом прогоне в браузере.
+   */
+  test('случайность уезжает отдельным полем, а не внутри meta', async () => {
+    const harness = createHarness()
+    const ready = harness.transport?.ready(createHandlers().handlers)
+
+    harness.deliver(initMessage())
+    harness.deliver(sessionMessage())
+    await ready
+
+    harness.respond(200, { balance: '240.00', entry: {}, idempotent: false })
+
+    await harness.transport?.bet({
+      amount: 10,
+      roundId: 'r-fair',
+      meta: { note: 'спин' },
+      fair: { nonce: 3, serverSeedHash: 'a'.repeat(64), random: 'b'.repeat(64) },
+    })
+
+    const body = JSON.parse(String(harness.fetchCalls[0]?.init.body)) as Record<string, unknown>
+
+    expect(body.fair).toEqual({
+      nonce: 3,
+      serverSeedHash: 'a'.repeat(64),
+      random: 'b'.repeat(64),
+    })
+    expect(body.meta).toEqual({ note: 'спин' })
+  })
+
+  test('выплата не несёт данных честности даже если их передали', async () => {
+    const harness = createHarness()
+    const ready = harness.transport?.ready(createHandlers().handlers)
+
+    harness.deliver(initMessage())
+    harness.deliver(sessionMessage())
+    await ready
+
+    harness.respond(200, { balance: '290.00', entry: {}, idempotent: false })
+
+    await harness.transport?.payout({
+      amount: 50,
+      roundId: 'r-fair',
+      fair: { nonce: 3, serverSeedHash: 'a'.repeat(64), random: 'b'.repeat(64) },
+    })
+
+    const body = JSON.parse(String(harness.fetchCalls[0]?.init.body)) as Record<string, unknown>
+    expect(body.fair).toBeUndefined()
+  })
+})

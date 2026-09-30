@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@luciferus/config": "workspace:*",
-    "@luciferus/protocol": "workspace:*"
+    "@luciferus/protocol": "workspace:*",
+    "@luciferus/fairness": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

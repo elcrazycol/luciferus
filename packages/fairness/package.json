@@ -1,0 +1,19 @@
+{
+  "name": "@luciferus/fairness",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Проверяемая честность: commit-reveal, вывод случайности и её проверка",
+  "exports": {
+    ".": "./src/index.ts",
+    "./digest": "./src/digest.ts",
+    "./round": "./src/round.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

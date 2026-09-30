@@ -14,9 +14,32 @@ export type CasinoLimits = {
   maxWin: number
 }
 
+export type FairMode = 'client' | 'provably-fair'
+
+/**
+ * Случайность раунда, выданная порталом.
+ *
+ * Игра не имеет права придумывать это сама: сервер знает свой сид и пересчитает
+ * случайность, а расхождение — отказ в ставке.
+ */
+export type FairRound = {
+  roundId: string
+  /** Номер раунда. С каждым спином растёт, повторять его нельзя. */
+  nonce: number
+  /** Опубликованный коммит: хэш скрытого серверного сида. */
+  serverSeedHash: string
+  /** Клиентский сид, видимый игроку. */
+  clientSeed: string
+  /** Готовая случайность раунда: 64 hex-символа. */
+  random: string
+  /** Чем игра может похвастаться на странице проверки — например, выпавшими символами. */
+  outcome?: Record<string, unknown>
+}
+
 export type CasinoSnapshot = {
   mode: CasinoMode
   gameSlug: string | null
+  fairMode: FairMode
   player: CasinoPlayer | null
   /**
    * Баланс числом, а не строкой.
@@ -35,6 +58,11 @@ export type RoundOptions = {
   /** Идентификатор раунда. Если не задан — SDK сгенерирует сам. */
   roundId?: string
   meta?: Record<string, unknown>
+  /**
+   * Случайность раунда. Обязательна, если игра объявлена как проверяемая:
+   * без неё ставка будет отклонена сервером.
+   */
+  fair?: FairRound
 }
 
 export type RoundResult = {
@@ -64,6 +92,7 @@ export type TransportSession = {
   balance: string
   currency: string
   limits: CasinoLimits
+  fairMode: FairMode
 }
 
 export type TransportHandlers = {
@@ -71,10 +100,24 @@ export type TransportHandlers = {
   onError(error: Error): void
 }
 
+/** Данные честности в том виде, в котором они уезжают на сервер. */
+export type FairClaimInput = {
+  nonce: number
+  serverSeedHash: string
+  random: string
+  /** Что игра покажет на странице проверки — например, выпавшие символы. */
+  outcome?: Record<string, unknown>
+}
+
 export type WalletOperationInput = {
   amount: number
   roundId: string
   meta?: Record<string, unknown>
+  /**
+   * Отдельное поле, а не часть `meta`: сервер проверяет эти данные до списания
+   * ставки, и они не игровые метаданные, а часть протокола честности.
+   */
+  fair?: FairClaimInput
 }
 
 /** Отмена раунда суммы не несёт: возвращается ровно то, что было списано. */
@@ -100,6 +143,8 @@ export type WalletTransport = {
   readonly mode: CasinoMode
   readonly gameSlug: string | null
   ready(handlers: TransportHandlers): Promise<TransportSession>
+  /** Случайность раунда. В портале её считает сервер, в мок-режиме — сам SDK. */
+  fairNext(input: { roundId: string }): Promise<FairRound>
   bet(input: WalletOperationInput): Promise<WalletOperationOutput>
   payout(input: WalletOperationInput): Promise<WalletOperationOutput>
   rollback(input: RollbackInput): Promise<WalletOperationOutput>

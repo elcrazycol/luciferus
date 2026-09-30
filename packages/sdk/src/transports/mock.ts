@@ -1,6 +1,8 @@
+import { deriveRoundRandom, serverSeedHash } from '@luciferus/fairness'
 import { parseDecimal, toDecimal } from '@luciferus/protocol/money'
 import { CasinoError } from '../errors'
 import type {
+  FairRound,
   RollbackInput,
   StorageLike,
   TransportSession,
@@ -17,9 +19,18 @@ type MockRound = {
   rolledBack: boolean
 }
 
+type MockSeedPair = {
+  serverSeed: string
+  serverSeedHash: string
+  clientSeed: string
+  nonce: number
+}
+
 type MockState = {
   balance: string
   rounds: Record<string, MockRound>
+  /** Локальная пара сидов: мок-режим тоже честный, просто сид никто не скрывает. */
+  fair?: MockSeedPair
 }
 
 export type MockControls = {
@@ -27,7 +38,18 @@ export type MockControls = {
   deposit(amount: number): string
   /** Стереть локальный кошелёк и начать заново. */
   reset(): string
+  /** Раскрыть текущую пару сидов и начать новую. */
+  rotate(): Promise<{ revealed: string; serverSeedHash: string }>
+  /**
+   * Текущая пара сидов целиком.
+   *
+   * В мок-режиме скрывать её не от кого: разработчик и есть владелец всего.
+   * Нужно дев-панели и тестам, чтобы убедиться, что локальный commit-reveal честный.
+   */
+  seeds(): Promise<MockSeedPair>
 }
+
+export type { MockSeedPair }
 
 export type MockTransportDeps = {
   storage: StorageLike
@@ -85,6 +107,34 @@ export function createMockTransport(deps: MockTransportDeps): WalletTransport & 
     write(state)
   }
 
+  function localRandomHex(bytes: number): string {
+    const buffer = new Uint8Array(bytes)
+    crypto.getRandomValues(buffer)
+    return Buffer.from(buffer).toString('hex')
+  }
+
+  /**
+   * Локальная пара сидов.
+   *
+   * Мок-режим не притворяется: он делает ровно то же, что сервер — заводит
+   * серверный сид, публикует его хэш и выводит случайность раунда через HMAC.
+   * Разница только в том, что сид лежит рядом и никто его не скрывает.
+   */
+  async function ensureSeedPair(): Promise<MockSeedPair> {
+    if (state.fair) return state.fair
+
+    const serverSeed = localRandomHex(32)
+    const pair: MockSeedPair = {
+      serverSeed,
+      serverSeedHash: await serverSeedHash(serverSeed),
+      clientSeed: localRandomHex(8),
+      nonce: 0,
+    }
+
+    commit({ ...state, fair: pair })
+    return pair
+  }
+
   function round(roundId: string): MockRound | null {
     return state.rounds[roundId] ?? null
   }
@@ -119,6 +169,27 @@ export function createMockTransport(deps: MockTransportDeps): WalletTransport & 
         balance: state.balance,
         currency: deps.currency,
         limits: deps.limits,
+        // Локально всегда можно получить случайность: это удобно для отладки игры.
+        fairMode: 'provably-fair',
+      }
+    },
+
+    async fairNext(input: { roundId: string }): Promise<FairRound> {
+      const pair = await ensureSeedPair()
+      const nonce = pair.nonce + 1
+
+      commit({ ...state, fair: { ...pair, nonce } })
+
+      return {
+        roundId: input.roundId,
+        nonce,
+        serverSeedHash: pair.serverSeedHash,
+        clientSeed: pair.clientSeed,
+        random: await deriveRoundRandom({
+          serverSeed: pair.serverSeed,
+          clientSeed: pair.clientSeed,
+          nonce,
+        }),
       }
     },
 
@@ -213,8 +284,35 @@ export function createMockTransport(deps: MockTransportDeps): WalletTransport & 
       },
 
       reset(): string {
-        commit({ balance: toDecimal(deps.startingBalance), rounds: {} })
+        // Сброс кошелька не должен ломать уже сыгранные раунды: пару сидов оставляем.
+        commit({
+          balance: toDecimal(deps.startingBalance),
+          rounds: {},
+          ...(state.fair ? { fair: state.fair } : {}),
+        })
         return state.balance
+      },
+
+      seeds(): Promise<MockSeedPair> {
+        return ensureSeedPair()
+      },
+
+      /** Раскрыть текущую пару и начать новую — как кнопка «Сменить сид» в портале. */
+      async rotate(): Promise<{ revealed: string; serverSeedHash: string }> {
+        const current = await ensureSeedPair()
+        const serverSeed = localRandomHex(32)
+
+        commit({
+          ...state,
+          fair: {
+            serverSeed,
+            serverSeedHash: await serverSeedHash(serverSeed),
+            clientSeed: localRandomHex(8),
+            nonce: 0,
+          },
+        })
+
+        return { revealed: current.serverSeed, serverSeedHash: current.serverSeedHash }
       },
     },
   }
