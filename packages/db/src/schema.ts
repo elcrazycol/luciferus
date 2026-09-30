@@ -91,7 +91,7 @@ export const ledger = pgTable(
     gameId: uuid('game_id').references(() => games.id, { onDelete: 'set null' }),
     /** Идентификатор раунда внутри игры (`r-42`, `crash-7`). */
     roundId: text('round_id'),
-    /** signup_bonus | reload_bonus | bet | win | rollback | sim_deposit | sim_withdrawal | admin_adjust */
+    /** signup_bonus | reload_bonus | bet | payout | rollback | sim_deposit | sim_withdrawal | admin_adjust */
     type: text('type').notNull(),
     amount: numeric('amount', { precision: 18, scale: 2 }).notNull(),
     balanceAfter: numeric('balance_after', { precision: 18, scale: 2 }).notNull(),

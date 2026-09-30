@@ -1,6 +1,7 @@
 import { currency } from '@luciferus/config/currency'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
+import { SiteHeader } from '@/components/site-header'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -18,6 +19,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           DEMO · {currency.symbol} {currency.name} — игровые, реальной ценности не имеют ·
           проект-песочница, не казино
         </div>
+
+        <SiteHeader />
 
         {children}
       </body>

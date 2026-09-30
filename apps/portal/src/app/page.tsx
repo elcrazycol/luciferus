@@ -6,8 +6,6 @@ import { fetchLobby } from '@/lib/api'
 // Каталог должен быть свежим при каждом заходе — без этого Next отдаст статику из сборки.
 export const dynamic = 'force-dynamic'
 
-const NAV_ITEMS = ['Лобби', 'Игры', 'Промо', 'Лидерборды', 'Кошелёк'] as const
-
 function OfflineNotice() {
   return (
     <div className="rounded-2xl border border-ember-500/25 bg-ember-500/5 p-6">
@@ -47,44 +45,8 @@ export default async function LobbyPage() {
   const providerCount = new Set(games.map((game) => game.providerName).filter(Boolean)).size
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 pt-8 pb-24 sm:px-6 lg:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold-500/30 bg-ink-900 text-2xl">
-            🎰
-          </div>
-          <div>
-            <p className="text-gold-gradient text-xl leading-none font-black tracking-tight">
-              LUCIFERUS CASINOS
-            </p>
-            <p className="text-[11px] text-white/40">
-              опенсорс · {currency.name} · {currency.symbol}
-            </p>
-          </div>
-        </div>
-
-        <nav className="flex flex-wrap items-center gap-1">
-          {NAV_ITEMS.map((item, index) => (
-            <span
-              key={item}
-              title={index === 0 ? undefined : 'Появится в следующих фазах'}
-              className={
-                index === 0
-                  ? 'rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white'
-                  : 'cursor-not-allowed rounded-lg px-3 py-1.5 text-sm text-white/30'
-              }
-            >
-              {item}
-            </span>
-          ))}
-
-          <span className="ml-2 rounded-lg border border-gold-500/30 bg-gold-500/10 px-3 py-1.5 text-sm font-semibold text-gold-300">
-            {formatAmount(economy.signupBonus)}
-          </span>
-        </nav>
-      </header>
-
-      <section className="mt-10">
+    <main className="mx-auto w-full max-w-7xl px-4 pt-10 pb-24 sm:px-6 lg:px-8">
+      <section>
         <h1 className="max-w-3xl text-3xl font-bold text-white sm:text-4xl">
           Казино, где проиграть нельзя. Потому что играть{' '}
           <span className="text-gold-gradient">не на что</span>.

@@ -10,8 +10,13 @@ import { and, arrayContains, asc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import { AppError } from './lib/errors'
+import { pingRedis } from './lib/redis'
+import { authRoutes } from './routes/auth'
+import { walletRoutes } from './routes/wallet'
 
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 const startedAt = Date.now()
 
 const app = new Hono()
@@ -44,27 +49,32 @@ app.get('/health', (c) =>
 )
 
 app.get('/v1/health', async (c) => {
-  try {
-    await db.execute(sql`select 1`)
-    return c.json({ ok: true, db: 'up' })
-  } catch (error) {
-    return c.json(
-      {
-        ok: false,
-        db: 'down',
-        hint: 'Поднимите инфраструктуру: bun run infra:up',
-        message: error instanceof Error ? error.message : String(error),
-      },
-      503,
-    )
-  }
+  const [database, redis] = await Promise.all([
+    db
+      .execute(sql`select 1`)
+      .then(() => 'up' as const)
+      .catch(() => 'down' as const),
+    pingRedis().then((ok) => (ok ? ('up' as const) : ('down' as const))),
+  ])
+
+  const ok = database === 'up'
+
+  return c.json(
+    {
+      ok,
+      db: database,
+      redis,
+      ...(ok ? {} : { hint: 'Поднимите инфраструктуру: bun run infra:up' }),
+    },
+    ok ? 200 : 503,
+  )
 })
 
 // ─── Конфиг платформы ────────────────────────────────────────────────────────────
 
 /**
- * Портал и SDK берут валюту и экономику отсюда, а не хардкодят значения.
- * Форк, переименовавший CrazyBucks, получит это бесплатно.
+ * Валюта и экономика в одном ответе: портал и SDK берут их отсюда,
+ * а не хардкодят значения.
  */
 app.get('/v1/config', (c) =>
   c.json({
@@ -134,6 +144,11 @@ app.get('/v1/games/:slug', async (c) => {
   return c.json({ game: row, currency })
 })
 
+// ─── Аккаунты и кошелёк ──────────────────────────────────────────────────────────
+
+app.route('/v1/auth', authRoutes)
+app.route('/v1/wallet', walletRoutes)
+
 // ─── Ошибки ──────────────────────────────────────────────────────────────────────
 
 app.notFound((c) =>
@@ -144,7 +159,14 @@ app.notFound((c) =>
 )
 
 app.onError((error, c) => {
+  // Ожидаемые ошибки (валидация, нехватка средств, лимиты) отдаём как есть.
+  if (error instanceof AppError) {
+    return c.json(error.toBody(), error.status as ContentfulStatusCode)
+  }
+
+  // Всё остальное — наш баг: наружу уходит обезличенный текст.
   console.error('[api] Необработанная ошибка:', error)
+
   return c.json(
     {
       error: 'internal_error',

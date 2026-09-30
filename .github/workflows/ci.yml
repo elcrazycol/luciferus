@@ -52,6 +52,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Тесты работают против настоящей базы, поэтому схема и сиды должны быть
+      # готовы ДО прогона — иначе интеграционные тесты упадут на пустой базе.
+      - name: Migrate database
+        run: bun run db:migrate
+
+      - name: Seed database
+        run: bun run db:seed
+
       - name: Lint
         run: bun run lint
 
@@ -60,9 +68,3 @@ jobs:
 
       - name: Test
         run: bun run test
-
-      - name: Migrate database
-        run: bun run db:migrate
-
-      - name: Seed database
-        run: bun run db:seed
