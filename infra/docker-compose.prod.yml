@@ -122,6 +122,29 @@ services:
       - '127.0.0.1:${PORTAL_HOST_PORT:-8080}:3000'
     mem_limit: 224m
 
+  # Туннель Cloudflare: способ отдать домен, не занимая ни одного порта.
+  #
+  # Нужен там, где 80 и 443 уже заняты чужими сервисами, а certbot держит 80 для
+  # продления сертификатов. Туннель сам открывает исходящее соединение к Cloudflare,
+  # поэтому входящие порты не требуются вообще, а TLS закрывает Cloudflare.
+  #
+  # Запускается отдельным профилем: без токена этот сервис бессмысленен, и
+  # `up -d` не должен падать на пустой переменной.
+  cloudflared:
+    <<: *restart
+    profiles: ['tunnel']
+    image: cloudflare/cloudflared:latest
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARE_TUNNEL_TOKEN:?задайте CLOUDFLARE_TUNNEL_TOKEN в .env}
+    # Сеть хоста: в панели Cloudflare адрес источника обычно указывают как
+    # `http://localhost:8080`, а портал как раз опубликован на 127.0.0.1:8080.
+    network_mode: host
+    mem_limit: 64m
+
   # Разовые задачи: миграции и сиды. Запускаются вручную, сами не стартуют.
   migrate:
     profiles: ['tools']
