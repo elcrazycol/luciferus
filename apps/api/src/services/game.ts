@@ -99,7 +99,7 @@ export async function createGameLaunch(
     },
     player: toPublicUser(user),
     wallet: { balance: wallet.balance, currency: wallet.currency },
-    apiUrl: serverConfig.apiUrl,
+    apiUrl: serverConfig.publicApiUrl,
   }
 }
 

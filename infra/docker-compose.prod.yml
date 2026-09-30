@@ -1,0 +1,158 @@
+# Production-стек LuciferusCasinos.
+#
+# Рассчитан на машину, где уже живут другие сервисы, поэтому:
+#   * отдельное имя проекта — `docker compose down` здесь не тронет чужие контейнеры;
+#   * наружу не публикуется ничего, кроме двух портов на 127.0.0.1: их забирает
+#     обратный прокси или туннель, а не сам стек;
+#   * у каждого сервиса жёсткий лимит памяти: перерасход убьёт этот контейнер,
+#     а не соседей на хосте.
+#
+# Запуск:  docker compose -f docker-compose.prod.yml up -d
+# Миграции: docker compose -f docker-compose.prod.yml run --rm migrate
+
+name: luciferus
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-luciferus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-luciferus}
+    # Настройки под маленькую машину: по умолчанию Postgres просит куда больше.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=32MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=1MB
+      - -c
+      - maintenance_work_mem=16MB
+      - -c
+      - effective_cache_size=128MB
+      - -c
+      - fsync=on
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-luciferus} -d ${POSTGRES_DB:-luciferus}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
+    # Наружу порт не отдаём: база нужна только сервисам этого стека.
+    expose:
+      - '5432'
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - 24mb
+      # Без политики вытеснения Redis откажется писать при заполнении памяти.
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 32m
+    expose:
+      - '6379'
+
+  api:
+    <<: *restart
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: luciferus-api:${IMAGE_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      DATABASE_URL: postgres://${POSTGRES_USER:-luciferus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-luciferus}
+      REDIS_URL: redis://redis:6379
+      # Внутренний адрес: так портал ходит в API по сети compose.
+      API_URL: http://api:3001
+      # Публичный адрес: его получают игры в хендшейке и ходят по нему напрямую.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:?задайте PUBLIC_API_URL в .env}
+      PORTAL_URL: ${PORTAL_URL:?задайте PORTAL_URL в .env}
+      GAME_SESSION_SECRET: ${GAME_SESSION_SECRET:?задайте GAME_SESSION_SECRET в .env}
+      AUTO_APPROVE_GAMES: ${AUTO_APPROVE_GAMES:-false}
+      LOBBY_BOTS: 'true'
+    ports:
+      # Только на петле: снаружи порт закрыт, достучаться можно лишь с хоста.
+      - '127.0.0.1:${API_HOST_PORT:-3001}:3001'
+    mem_limit: 128m
+
+  portal:
+    <<: *restart
+    build:
+      context: ..
+      dockerfile: apps/portal/Dockerfile
+    image: luciferus-portal:${IMAGE_TAG:-local}
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      # Порталу нужен внутренний адрес: он обращается к API сам, с сервера.
+      API_URL: http://api:3001
+      # Потолок кучи ниже лимита контейнера, чтобы Node успевал собирать мусор
+      # и не был убит OOM-киллером.
+      NODE_OPTIONS: --max-old-space-size=160
+    ports:
+      - '127.0.0.1:${PORTAL_HOST_PORT:-8080}:3000'
+    mem_limit: 224m
+
+  # Разовые задачи: миграции и сиды. Запускаются вручную, сами не стартуют.
+  migrate:
+    profiles: ['tools']
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: luciferus-api:${IMAGE_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-luciferus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-luciferus}
+    command: ['bun', 'run', 'packages/db/src/migrate.ts']
+    mem_limit: 128m
+
+  seed:
+    profiles: ['tools']
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: luciferus-api:${IMAGE_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-luciferus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-luciferus}
+    command: ['bun', 'run', 'packages/db/src/seed.ts']
+    mem_limit: 128m
+
+volumes:
+  postgres-data:
+  redis-data:

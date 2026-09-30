@@ -181,7 +181,7 @@ packages/
   db/             схема Drizzle, миграции, сиды
   config/         валюта и экономика в одном месте
 infra/            docker compose: Postgres + Redis
-docs/             ARCHITECTURE.md · SDK.md
+docs/             ARCHITECTURE.md · SDK.md · DEPLOY.md
 ```
 
 Подробный разбор — в [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
@@ -216,6 +216,18 @@ docs/             ARCHITECTURE.md · SDK.md
 
 Next.js · React · TypeScript · Bun · Hono · PostgreSQL · Redis · Drizzle ORM · Tailwind
 CSS · WebSocket · Zod.
+
+## Развёртывание
+
+```bash
+cd infra && cp ../.env.example .env
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm migrate
+docker compose -f docker-compose.prod.yml run --rm seed
+```
+
+Подробности, включая развёртывание на сервере, где уже живут другие сервисы, — в
+[`docs/DEPLOY.md`](./docs/DEPLOY.md).
 
 ## Участие
 

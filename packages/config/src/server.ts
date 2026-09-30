@@ -23,6 +23,13 @@ export const serverConfig = {
   port: int(process.env.PORT, 3001),
   portalUrl: process.env.PORTAL_URL ?? 'http://localhost:3000',
   apiUrl: process.env.API_URL ?? 'http://localhost:3001',
+  /**
+   * Адрес API, который видят игры. Он уезжает в хендшейк, и игра ходит по нему
+   * напрямую — значит, адрес обязан быть публичным и совпадать с тем, что
+   * разрешено в CORS. Внутри стека это отдельное значение: портал обращается
+   * к API по внутренней сети, а браузер игры — снаружи.
+   */
+  publicApiUrl: process.env.PUBLIC_API_URL ?? process.env.API_URL ?? 'http://localhost:3001',
 
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgres://luciferus:luciferus@localhost:55432/luciferus',

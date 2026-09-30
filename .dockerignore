@@ -1,0 +1,27 @@
+# Зависимости и сборка: внутри образа ставятся заново.
+node_modules
+**/node_modules
+
+# Артефакты сборки
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+
+# Сгенерированное локально: пересобирается внутри образа
+apps/portal/public/sdk
+apps/example-game/public
+
+# Секреты и локальное окружение
+.env
+.env.local
+.env.*.local
+
+# Мусор
+.git
+.github
+*.log
+coverage
+.DS_Store
