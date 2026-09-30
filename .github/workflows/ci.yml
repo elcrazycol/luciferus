@@ -39,8 +39,10 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgres://luciferus:luciferus@localhost:5432/luciferus
-      REDIS_URL: redis://localhost:6379
+      # Именно 127.0.0.1, а не localhost: на раннере localhost может разрешаться
+      # в ::1 первым, и подключение к проброшенному порту docker отваливается.
+      DATABASE_URL: postgres://luciferus:luciferus@127.0.0.1:5432/luciferus
+      REDIS_URL: redis://127.0.0.1:6379
 
     steps:
       - uses: actions/checkout@v5
@@ -51,6 +53,20 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Диагностика на случай, если сервисы не отвечают: без неё в логе видно
+      # только ECONNREFUSED и непонятно, кто виноват — адрес, порт или контейнер.
+      - name: Check service connectivity
+        run: |
+          echo "— как разрешается localhost:"
+          getent hosts localhost || true
+          echo "— проброшенные порты:"
+          docker port "$(docker ps --filter 'name=postgres' --format '{{.ID}}' | head -1)" || true
+          docker port "$(docker ps --filter 'name=redis' --format '{{.ID}}' | head -1)" || true
+          echo "— TCP 127.0.0.1:5432:"
+          (timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432' && echo open) || echo closed
+          echo "— TCP 127.0.0.1:6379:"
+          (timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/6379' && echo open) || echo closed
 
       # Тесты работают против настоящей базы, поэтому схема и сиды должны быть
       # готовы ДО прогона — иначе интеграционные тесты упадут на пустой базе.
