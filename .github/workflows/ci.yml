@@ -55,25 +55,20 @@ jobs:
         run: bun install --frozen-lockfile
 
       # Диагностика: если сервисы не отвечают, в логе видно только ECONNREFUSED
-      # и непонятно, виноват адрес, драйвер или сам контейнер.
+      # и непонятно, виноват адрес, драйвер, окружение или контейнер.
       - name: Check service connectivity
         run: |
-          echo "— версия Bun:"
-          bun --version
-          echo "— DATABASE_URL, как его видит Bun:"
-          bun -e 'console.log(process.env.DATABASE_URL)'
-          echo "— как разрешается localhost:"
-          getent hosts localhost || true
-          echo "— TCP-проброс:"
-          docker port "$(docker ps --filter 'name=postgres' --format '{{.ID}}' | head -1)" || true
+          set +e
+          echo "— версия Bun: $(bun --version)"
+          echo "— DATABASE_URL в окружении: $DATABASE_URL"
+          echo "— куда подключается само приложение:"
+          bun -e 'const { serverConfig } = await import("./packages/config/src/server.ts"); console.log("   " + serverConfig.databaseUrl)'
           echo "— сырое TCP-подключение из Bun, IPv4:"
-          bun -e 'try { await Bun.connect({ hostname: "127.0.0.1", port: 5432, socket: { data() {} } }); console.log("ok") } catch (e) { console.log("fail:", e.code ?? e.message) }'
-          echo "— сырое TCP-подключение из Bun, IPv6:"
-          bun -e 'try { await Bun.connect({ hostname: "::1", port: 5432, socket: { data() {} } }); console.log("ok") } catch (e) { console.log("fail:", e.code ?? e.message) }'
-          echo "— подключение драйвером postgres.js:"
-          bun -e 'const postgres = (await import("postgres")).default; const sql = postgres(process.env.DATABASE_URL, { max: 1 }); try { const rows = await sql`select current_user, current_database()`; console.log("ok:", rows[0]) } catch (e) { console.log("fail:", e.code, e.message) } finally { await sql.end() }'
+          bun -e 'try { await Bun.connect({ hostname: "127.0.0.1", port: 5432, socket: { data() {} } }); console.log("   ok") } catch (e) { console.log("   fail:", e.code ?? e.message) }'
+          echo "— подключение драйвером из пакета db:"
+          (cd packages/db && bun -e 'const postgres = (await import("postgres")).default; const sql = postgres(process.env.DATABASE_URL, { max: 1 }); try { const rows = await sql`select current_user, current_database()`; console.log("   ok:", rows[0]) } catch (e) { console.log("   fail:", e.code, e.message) } finally { await sql.end() }')
           echo "— что видит сам контейнер:"
-          docker exec "$(docker ps --filter 'name=postgres' --format '{{.ID}}' | head -1)" psql -U luciferus -d luciferus -c "select current_user, current_database();" || true
+          docker exec "$(docker ps --filter 'name=postgres' --format '{{.ID}}' | head -1)" psql -U luciferus -d luciferus -c "select current_user, current_database();"
 
       # Тесты работают против настоящей базы, поэтому схема и сиды должны быть
       # готовы ДО прогона — иначе интеграционные тесты упадут на пустой базе.

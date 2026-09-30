@@ -1,7 +1,12 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
-  "globalEnv": ["NODE_ENV"],
+  // Переменные, которые turbo обязан передавать задачам.
+  // Turbo 2.x фильтрует окружение и отдаёт задаче только объявленное: без этой
+  // строки DATABASE_URL не доходил до скриптов миграций и сидов, и они молча
+  // подключались к значению по умолчанию. На CI это выглядело как ECONNREFUSED,
+  // хотя порт был открыт и адрес верный.
+  "globalEnv": ["NODE_ENV", "DATABASE_URL", "REDIS_URL", "PORTAL_URL", "API_URL"],
   "globalDependencies": ["tsconfig.json", "biome.json"],
   "tasks": {
     "build": {
