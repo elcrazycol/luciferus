@@ -1,0 +1,81 @@
+name: 🐞 Баг
+description: Что-то работает не так, как ожидалось
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что сообщаете. Чем конкретнее описание, тем быстрее починим.
+
+        Если баг про **баланс** — обязательно приложите логин, время и номер раунда:
+        все движения денег лежат в журнале, и по ним видно, что произошло.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что произошло
+      description: Опишите, что вы сделали и что получили.
+      placeholder: Нажал «Крутить», баланс списался, но выигрыш не начислился.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидалось
+      placeholder: Выигрыш должен был начислиться, как в прошлый раз.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести
+      placeholder: |
+        1. Открыть /game/lucky-7s
+        2. Поставить 10
+        3. Нажать «Крутить»
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Где именно
+      options:
+        - Кошелёк и баланс
+        - Запуск игры (iframe, хендшейк)
+        - Честность и раскрытие сидов
+        - Каталог и публикация игр
+        - Модерация
+        - Интерфейс
+        - Другое
+    validations:
+      required: true
+
+  - type: input
+    id: round
+    attributes:
+      label: Номер раунда или логин
+      description: Если баг связан с игрой или балансом.
+      placeholder: 'roundId: abc-123, логин: player'
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Окружение
+      description: Локальный запуск или демо, браузер, версия Bun.
+      placeholder: Локально, Firefox 130, Bun 1.4.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи и скриншоты
+      description: Вывод консоли браузера или логи API.
+      render: shell
+    validations:
+      required: false

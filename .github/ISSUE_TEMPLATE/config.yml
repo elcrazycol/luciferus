@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Вопрос по подключению игры
+    url: https://github.com/LuciferusCasinos/LuciferusCasinos/blob/main/docs/SDK.md
+    about: Гайд по SDK: подключение, хендшейк, проверяемая честность, частые ошибки
+  - name: 🏗 Как устроен проект
+    url: https://github.com/LuciferusCasinos/LuciferusCasinos/blob/main/docs/ARCHITECTURE.md
+    about: Разбор архитектуры для тех, кто собирается читать или менять код
+  - name: 🗺 Что планируется
+    url: https://github.com/LuciferusCasinos/LuciferusCasinos/blob/main/PLAN.md
+    about: Фазы проекта и решения, принятые по ходу

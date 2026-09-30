@@ -1,0 +1,37 @@
+name: 💡 Идея
+description: Предложение по проекту
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу это решает
+      description: Опишите проблему, а не только решение — возможно, есть путь проще.
+      placeholder: Хочется видеть, кто сейчас играет, чтобы лобби не выглядело пустым.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Что предлагаете
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Что ещё рассматривали
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Затрагивает
+      options:
+        - label: SDK для игр
+        - label: API
+        - label: Интерфейс портала
+        - label: Схему базы
+        - label: Проверяемую честность

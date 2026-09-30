@@ -1,12 +1,16 @@
 import { currency, formatAmount } from '@luciferus/config/currency'
 import { LEDGER_TYPE_LABELS } from '@luciferus/protocol/wallet'
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ReloadBonusButton } from '@/components/reload-bonus-button'
 import { ApiRequestError, getLedger, getWalletOverview } from '@/lib/api'
 import { getSessionToken } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
+
+/** Размеры страницы истории. Фиксированный набор: значение приходит из адреса. */
+const LEDGER_LIMITS = [20, 50, 100] as const
 
 export const metadata: Metadata = {
   title: 'Кошелёк — LuciferusCasinos',
@@ -53,7 +57,7 @@ function ApiDownNotice({ message }: { message: string }) {
 export default async function WalletPage({
   searchParams,
 }: {
-  searchParams: Promise<{ welcome?: string }>
+  searchParams: Promise<{ welcome?: string; limit?: string }>
 }) {
   const token = await getSessionToken()
   if (!token) redirect('/login')
@@ -77,12 +81,17 @@ export default async function WalletPage({
   }
 
   // История вторична: если она не пришла, баланс и дозаправка обязаны работать.
-  const ledger = await getLedger(token, 20).catch((error: unknown) => {
+  const { welcome, limit: rawLimit } = await searchParams
+
+  // Сколько операций показать. Значения из фиксированного набора: адрес страницы
+  // приходит от пользователя, и пересылать его в API как есть нельзя.
+  const limit = LEDGER_LIMITS.find((value) => String(value) === rawLimit) ?? LEDGER_LIMITS[0]
+
+  const ledger = await getLedger(token, limit).catch((error: unknown) => {
     console.error('[portal] не удалось загрузить историю операций:', error)
     return null
   })
 
-  const { welcome } = await searchParams
   const { wallet, recentEntries } = overview
   const reload = wallet.reload
 
@@ -206,10 +215,28 @@ export default async function WalletPage({
           </div>
         )}
 
-        {ledger?.nextCursor && (
-          <p className="mt-3 text-xs text-white/35">
-            Показаны последние 20 операций. Постраничная навигация появится вместе с профилем.
-          </p>
+        {ledger && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
+            <span className="text-white/35">Показать:</span>
+
+            {LEDGER_LIMITS.map((value) => (
+              <Link
+                key={value}
+                href={`/wallet?limit=${value}`}
+                className={`rounded-lg px-2 py-1 transition-colors ${
+                  value === limit
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/40 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                {value}
+              </Link>
+            ))}
+
+            {ledger.nextCursor && (
+              <span className="text-white/30">— есть ещё; откройте больший размер списка</span>
+            )}
+          </div>
         )}
       </section>
     </main>

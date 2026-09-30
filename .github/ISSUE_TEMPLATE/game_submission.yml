@@ -1,0 +1,81 @@
+name: 🎰 Добавить игру
+description: Расскажите о своей игре — добавим её в каталог
+labels: ['game']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Игра остаётся на вашем хостинге: портал только откроет её в iframe и даст кошелёк
+        игрока. Своя игра уже работает? Тогда это самый короткий путь — мы добавим её в каталог
+        за вас.
+
+        Гайд по подключению: [`docs/SDK.md`](https://github.com/LuciferusCasinos/LuciferusCasinos/blob/main/docs/SDK.md).
+        Если хочется сделать всё самому — форма на `/developers/submit` в портале.
+
+  - type: input
+    id: title
+    attributes:
+      label: Название игры
+      placeholder: Lucky 7s
+    validations:
+      required: true
+
+  - type: input
+    id: embed
+    attributes:
+      label: Адрес игры
+      description: Страница, которую портал загрузит в iframe.
+      placeholder: https://my-game.example/play
+    validations:
+      required: true
+
+  - type: textarea
+    id: origins
+    attributes:
+      label: Origin`ы игры
+      description: |
+        По одному на строку. Origin — схема, хост и порт, **без пути**: портал адресует
+        сообщения точно туда и никогда в `*`. Если адрес игры `https://game.example/play`,
+        то origin — `https://game.example`.
+      placeholder: https://game.example
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Описание
+      description: Пара предложений для карточки в каталоге.
+    validations:
+      required: true
+
+  - type: input
+    id: repo
+    attributes:
+      label: Ссылка на исходники
+      description: Публичный репозиторий, если есть. Помогает быстрее проверить заявку.
+      placeholder: https://github.com/you/my-game
+    validations:
+      required: false
+
+  - type: dropdown
+    id: fair
+    attributes:
+      label: Режим честности
+      options:
+        - provably-fair — исход считается из случайности портала, раунды проверяемы
+        - client — исход считает сама игра
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Игра подключает SDK одной строкой и отвечает на приветствие портала
+          required: true
+        - label: Объявленный origin совпадает с адресом игры
+          required: true
+        - label: Игра умеет превращать случайность в исход детерминированно (для provably-fair)
+          required: false

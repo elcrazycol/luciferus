@@ -105,7 +105,7 @@ export function SubmitGameForm() {
             { value: 'client', label: 'Клиентский — исход считает игра' },
             { value: 'provably-fair', label: 'Проверяемый — сиды раскрываются' },
           ]}
-          hint="Проверяемый режим появится в фазе 4."
+          hint="В проверяемом режиме портал выдаёт случайность раунда и проверяет, что игра использовала именно её."
           errors={state.fieldErrors?.fairMode}
         />
 
