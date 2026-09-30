@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lucky 7s — эталонная игра LuciferusCasinos</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #06040f;
+        --card: #100c22;
+        --line: rgb(255 206 92 / 0.16);
+        --gold: #ffce5c;
+        --mint: #34d399;
+        --ember: #ff4d6d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background:
+          radial-gradient(60% 50% at 50% 0%, rgb(139 92 246 / 0.18), transparent),
+          radial-gradient(50% 40% at 100% 100%, rgb(240 173 43 / 0.12), transparent), var(--ink);
+        color: rgb(255 255 255 / 0.88);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+
+      .machine {
+        width: 100%;
+        max-width: 460px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: linear-gradient(160deg, rgb(255 206 92 / 0.06), transparent 55%), var(--card);
+        padding: 18px;
+        box-shadow: 0 30px 60px -40px rgb(0 0 0 / 0.9);
+      }
+
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0.04em;
+        background: linear-gradient(100deg, #ffe08a, #f0ad2b);
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+      }
+
+      .mode {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--gold);
+        white-space: nowrap;
+      }
+
+      .mode[data-mode='portal'] {
+        color: var(--mint);
+        border-color: rgb(52 211 153 / 0.4);
+      }
+
+      .mode[data-mode='broken'] {
+        color: var(--ember);
+        border-color: rgb(255 77 109 / 0.5);
+      }
+
+      .balance-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-size: 12px;
+        color: rgb(255 255 255 / 0.45);
+        margin-bottom: 10px;
+      }
+
+      .balance-row b {
+        font-size: 20px;
+        color: var(--gold);
+      }
+
+      .reels {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid rgb(255 255 255 / 0.08);
+        background: rgb(0 0 0 / 0.35);
+      }
+
+      .reel {
+        display: grid;
+        place-items: center;
+        height: 84px;
+        border-radius: 10px;
+        background: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.02));
+        font-size: 40px;
+        user-select: none;
+      }
+
+      .result {
+        margin: 12px 0;
+        min-height: 22px;
+        text-align: center;
+        font-size: 13px;
+        color: rgb(255 255 255 / 0.5);
+      }
+
+      .result[data-kind='win'] {
+        color: var(--mint);
+        font-weight: 600;
+      }
+
+      .result[data-kind='loss'] {
+        color: rgb(255 255 255 / 0.45);
+      }
+
+      .result[data-kind='error'] {
+        color: var(--ember);
+      }
+
+      .bets {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+
+      .bet {
+        flex: 1;
+        padding: 7px 4px;
+        border-radius: 9px;
+        border: 1px solid rgb(255 255 255 / 0.12);
+        background: rgb(255 255 255 / 0.05);
+        color: rgb(255 255 255 / 0.7);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .bet[data-active='true'] {
+        border-color: rgb(255 206 92 / 0.55);
+        background: rgb(255 206 92 / 0.14);
+        color: var(--gold);
+      }
+
+      #spin {
+        width: 100%;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid rgb(255 206 92 / 0.45);
+        background: rgb(255 206 92 / 0.16);
+        color: var(--gold);
+        font: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        transition: background 120ms ease;
+      }
+
+      #spin:hover:enabled {
+        background: rgb(255 206 92 / 0.26);
+      }
+
+      #spin:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .footer {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid rgb(255 255 255 / 0.07);
+      }
+
+      .paytable {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 4px 10px;
+        font-size: 11px;
+      }
+
+      .pay {
+        display: flex;
+        justify-content: space-between;
+        color: rgb(255 255 255 / 0.45);
+      }
+
+      .pay i {
+        font-style: normal;
+        color: var(--gold);
+      }
+
+      .note {
+        margin: 12px 0 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: rgb(255 255 255 / 0.3);
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="machine">
+      <header>
+        <h1>LUCKY 7s</h1>
+        <span class="mode" id="mode">подключаемся…</span>
+      </header>
+
+      <div class="balance-row">
+        <span>Баланс</span>
+        <b id="balance">—</b>
+      </div>
+
+      <div class="reels" aria-live="polite">
+        <div class="reel">·</div>
+        <div class="reel">·</div>
+        <div class="reel">·</div>
+      </div>
+
+      <p class="result" id="result">Ставьте и крутите</p>
+
+      <div class="bets" id="bets"></div>
+      <button id="spin" type="button">КРУТИТЬ</button>
+
+      <div class="footer">
+        <div class="paytable" id="paytable"></div>
+        <p class="note">
+          Эталонная игра LuciferusCasinos. RTP <span id="rtp">—</span>. Ставки и выплаты идут
+          через кошелёк портала; если открыть игру напрямую, SDK подключит локальный кошелёк.
+        </p>
+      </div>
+    </main>
+
+    <!-- Подключение SDK: ровно эта строка нужна любой игре. -->
+    <script src="__PORTAL_URL__/sdk/v1.js" async></script>
+    <script type="module" src="/game.js"></script>
+  </body>
+</html>

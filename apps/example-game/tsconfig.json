@@ -1,0 +1,7 @@
+{
+  "extends": "../../packages/config/tsconfig/bun.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "serve.ts"]
+}

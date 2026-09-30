@@ -1,5 +1,6 @@
 import { currency, formatAmount } from '@luciferus/config/currency'
 import { economy } from '@luciferus/config/economy'
+import Link from 'next/link'
 import { GameCardTile } from '@/components/game-card'
 import { fetchLobby } from '@/lib/api'
 
@@ -105,21 +106,26 @@ export default async function LobbyPage() {
 
       <section className="mt-14 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="card-gold rounded-2xl bg-ink-900/60 p-5 lg:col-span-2">
-          <h2 className="text-lg font-semibold text-white">Что здесь будет</h2>
+          <h2 className="text-lg font-semibold text-white">Что уже работает</h2>
           <ol className="mt-4 space-y-3 text-sm text-white/60">
             <li>
-              <span className="font-medium text-white/85">Фаза 1 — кошелёк.</span> Регистрация,
-              сессии, журнал всех операций и стартовый бонус {formatAmount(economy.signupBonus)}.
+              <span className="font-medium text-white/85">Кошелёк.</span> Регистрация, сессии,
+              журнал всех операций и стартовый бонус {formatAmount(economy.signupBonus)}.
             </li>
             <li>
-              <span className="font-medium text-white/85">Фаза 2 — SDK.</span> Одна строка в игре
-              даёт ей баланс, ставки, выплаты и хендшейк с порталом. Ключевая веха проекта.
+              <span className="font-medium text-white/85">SDK и запуск игр.</span> Игра подключается
+              одной строкой, получает баланс игрока и играет по-настоящему: ставки и выплаты идут
+              через кошелёк портала. Работает — попробуй{' '}
+              <Link href="/game/lucky-7s" className="text-gold-300 hover:underline">
+                Lucky 7s
+              </Link>
+              .
             </li>
             <li>
               <span className="font-medium text-white/85">
-                Фаза 3+ — каталог, честность, realtime.
+                Дальше — каталог, честность, realtime.
               </span>{' '}
-              Модерация игр, страница верификации раундов, чат, лента выигрышей.
+              Регистрация игр и модерация, страница верификации раундов, чат, лента выигрышей.
             </li>
           </ol>
         </div>
@@ -133,7 +139,12 @@ export default async function LobbyPage() {
           <pre className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-ink-950/80 p-4 text-xs text-gold-300">
             <code>{'<script src="http://localhost:3000/sdk/v1.js" async />'}</code>
           </pre>
-          <p className="mt-3 text-xs text-white/40">Появится в фазе 2. План — в PLAN.md.</p>
+          <Link
+            href="/developers"
+            className="mt-3 inline-block text-xs text-gold-300 hover:underline"
+          >
+            Как подключить — гайд и живой пример
+          </Link>
         </div>
       </section>
 

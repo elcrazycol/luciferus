@@ -56,12 +56,25 @@ export const idempotencyKeySchema = z
   .min(1)
   .max(128, 'Ключ идемпотентности длиннее 128 символов')
 
+/**
+ * Метаданные операции, которые присылает игра.
+ *
+ * Ограничение по размеру — не паранойя: `meta` уезжает в `jsonb` в append-only
+ * журнале и остаётся там навсегда, а писать туда может любой автор игры.
+ */
+export const metaSchema = z
+  .record(z.string(), z.unknown())
+  .refine(
+    (value) => JSON.stringify(value).length <= 2_000,
+    'Слишком большой объект meta (максимум 2000 символов)',
+  )
+
 const mutationBase = {
   roundId: roundIdSchema,
   idempotencyKey: idempotencyKeySchema.optional(),
   /** Игра, из которой пришла операция. Пока необязательна: SDK появится в фазе 2. */
   gameSlug: z.string().trim().max(64).optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
+  meta: metaSchema.optional(),
 }
 
 export const betRequestSchema = z.object({ amount: amountSchema, ...mutationBase })

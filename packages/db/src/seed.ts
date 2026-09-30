@@ -141,6 +141,11 @@ export type SeedGame = {
   volatility: 'low' | 'medium' | 'high'
   rtp: string
   limits: { minBet: number; maxBet: number; maxWin: number }
+  /**
+   * Origin'ы, с которых игра примет `casino:init`. Пустой список означает, что
+   * портал не сможет её запустить: адресовать сообщение будет некуда.
+   */
+  allowedOrigins: string[]
 }
 
 /**
@@ -154,7 +159,10 @@ export const SEED_GAMES: SeedGame[] = [
     title: 'Lucky 7s',
     description: 'Классический трёхбарабанный слот. Три семёрки — и вечер удался.',
     providerSlug: 'luciferus-originals',
-    embedUrl: 'https://example.com/games/lucky-7s',
+    // Эталонная игра из apps/example-game: единственная в сидах, которую
+    // действительно можно запустить. Порт совпадает с её dev-сервером.
+    embedUrl: 'http://localhost:4000/',
+    allowedOrigins: ['http://localhost:4000'],
     categories: ['slots', 'classic'],
     tags: ['7s', 'classic', '3-reels'],
     fairMode: 'provably-fair',
@@ -168,6 +176,7 @@ export const SEED_GAMES: SeedGame[] = [
     description: 'Кривая уходит вверх, ты жмёшь Cash Out. Кто остановится первым?',
     providerSlug: 'luciferus-originals',
     embedUrl: 'https://example.com/games/crash-rocket',
+    allowedOrigins: [],
     categories: ['crash', 'multiplayer'],
     tags: ['crash', 'rocket', 'fast'],
     fairMode: 'provably-fair',
@@ -181,6 +190,7 @@ export const SEED_GAMES: SeedGame[] = [
     description: 'Двадцать одно, без дилера и без ставок. Просто покажи, что умеешь.',
     providerSlug: 'stub-studio',
     embedUrl: 'https://example.com/games/blackjack-table',
+    allowedOrigins: [],
     categories: ['table', 'cards'],
     tags: ['blackjack', '21', 'cards'],
     fairMode: 'client',
@@ -254,23 +264,42 @@ async function ensureProvider(input: SeedProvider): Promise<string> {
 
 async function ensureGame(input: SeedGame, providerId: string): Promise<boolean> {
   const [existing] = await db
-    .select({ id: games.id })
+    .select({ id: games.id, submittedBy: games.submittedBy })
     .from(games)
     .where(eq(games.slug, input.slug))
     .limit(1)
-
-  if (existing) return false
 
   const manifest = {
     slug: input.slug,
     title: input.title,
     version: '0.0.1',
     embed: input.embedUrl,
-    origins: [],
+    origins: input.allowedOrigins,
     categories: input.categories,
     fairMode: input.fairMode,
     limits: input.limits,
     sdk: '^1.0.0',
+  }
+
+  if (existing) {
+    // Игры из сидов обновляем, а не пропускаем: иначе смена адреса эталонной игры
+    // не долетела бы до тех, у кого база уже засеяна. Игры реальных авторов
+    // (у них заполнен submittedBy) не трогаем ни при каких условиях.
+    if (existing.submittedBy !== null) return false
+
+    await db
+      .update(games)
+      .set({
+        embedUrl: input.embedUrl,
+        allowedOrigins: input.allowedOrigins,
+        limits: input.limits,
+        isStub: input.allowedOrigins.length === 0,
+        manifest,
+        updatedAt: new Date(),
+      })
+      .where(eq(games.id, existing.id))
+
+    return true
   }
 
   await db.transaction(async (tx) => {
@@ -282,7 +311,7 @@ async function ensureGame(input: SeedGame, providerId: string): Promise<boolean>
         description: input.description,
         providerId,
         embedUrl: input.embedUrl,
-        allowedOrigins: [],
+        allowedOrigins: input.allowedOrigins,
         status: 'live',
         fairMode: input.fairMode,
         limits: input.limits,
@@ -291,7 +320,8 @@ async function ensureGame(input: SeedGame, providerId: string): Promise<boolean>
         categories: input.categories,
         tags: input.tags,
         manifest,
-        isStub: true,
+        // Заглушка — это игра, которую нельзя запустить: у неё нет объявленного origin.
+        isStub: input.allowedOrigins.length === 0,
       })
       .returning({ id: games.id })
 

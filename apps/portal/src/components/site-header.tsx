@@ -7,6 +7,7 @@ import { getSessionToken } from '@/lib/session'
 const NAV_LINKS = [
   { href: '/', label: 'Лобби' },
   { href: '/wallet', label: 'Кошелёк' },
+  { href: '/developers', label: 'Разработчикам' },
 ] as const
 
 const COMING_SOON = ['Промо', 'Лидерборды'] as const

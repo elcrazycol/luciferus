@@ -1,0 +1,19 @@
+{
+  "name": "@luciferus/example-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Эталонная игра LuciferusCasinos: слот на ванильном TypeScript, подключённый к SDK",
+  "scripts": {
+    "dev": "bun run --watch serve.ts",
+    "start": "bun run serve.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@luciferus/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

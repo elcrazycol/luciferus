@@ -46,6 +46,22 @@ function textValue(formData: FormData, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
+/**
+ * Куда вернуть игрока после входа.
+ *
+ * Принимаем только относительный путь внутри портала: `next=//evil.com` —
+ * это протокол-относительный URL, то есть редирект на чужой сайт. Классическая
+ * дыра в формах входа, поэтому проверка явная.
+ */
+function safeNext(value: string | undefined): string | null {
+  if (!value) return null
+  if (!value.startsWith('/')) return null
+  if (value.startsWith('//')) return null
+  if (value.startsWith('/\\')) return null
+
+  return value
+}
+
 export async function registerAction(
   _prevState: AuthFormState,
   formData: FormData,
@@ -106,7 +122,7 @@ export async function loginAction(
   }
 
   await setSessionToken(token)
-  redirect('/wallet')
+  redirect(safeNext(textValue(formData, 'next')) ?? '/wallet')
 }
 
 export async function logoutAction(): Promise<void> {

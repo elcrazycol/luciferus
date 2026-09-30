@@ -1,11 +1,13 @@
 import { expect } from 'bun:test'
+import { serverConfig } from '@luciferus/config'
 import { db } from '@luciferus/db'
-import { ledger, users, wallets } from '@luciferus/db/schema'
+import { games, ledger, users, wallets } from '@luciferus/db/schema'
 import type { AuthResponse } from '@luciferus/protocol/auth'
 import type { ApiErrorCode } from '@luciferus/protocol/errors'
 import { eq, like, sql } from 'drizzle-orm'
 import { AppError } from '../src/lib/errors'
-import { register } from '../src/services/auth'
+import { issueGameToken } from '../src/lib/signed-token'
+import { register, resolveSession } from '../src/services/auth'
 
 /**
  * Префикс тестовых аккаунтов. Без подчёркивания — в SQL `LIKE` символ `_`
@@ -36,6 +38,66 @@ export async function assertDatabaseReachable(): Promise<void> {
 export async function cleanupTestUsers(): Promise<void> {
   // Кошельки, сессии и леджер уходят каскадом по внешним ключам.
   await db.delete(users).where(like(users.username, `${TEST_PREFIX}%`))
+}
+
+/**
+ * Игра для тестов. Объявленный origin по умолчанию есть — иначе её нельзя
+ * запустить, а именно запуск чаще всего и проверяется.
+ */
+export async function createTestGame(
+  options: {
+    allowedOrigins?: string[]
+    limits?: { minBet: number; maxBet: number; maxWin: number }
+  } = {},
+): Promise<{ id: string; slug: string; embedUrl: string }> {
+  const slug = `spec-game-${Math.random().toString(36).slice(2, 10)}`
+
+  const [game] = await db
+    .insert(games)
+    .values({
+      slug,
+      title: `Тестовая игра ${slug}`,
+      embedUrl: 'https://game.test/',
+      allowedOrigins: options.allowedOrigins ?? ['https://game.test'],
+      status: 'live',
+      limits: options.limits ?? { minBet: 0.1, maxBet: 100, maxWin: 5000 },
+    })
+    .returning({ id: games.id, slug: games.slug, embedUrl: games.embedUrl })
+
+  if (!game) throw new Error('Не удалось создать тестовую игру')
+
+  return game
+}
+
+export async function cleanupTestGames(): Promise<void> {
+  await db.delete(games).where(like(games.slug, 'spec-game-%'))
+}
+
+/** Полный цикл: игрок + сессия + игра + игровой токен. */
+export async function createGameFixture(
+  options: {
+    allowedOrigins?: string[]
+    limits?: { minBet: number; maxBet: number; maxWin: number }
+  } = {},
+) {
+  const { user, session } = await createTestUser()
+  const game = await createTestGame(options)
+
+  const resolved = await resolveSession(session.token)
+  if (!resolved) throw new Error('Не удалось разобрать созданную сессию')
+
+  const gameToken = issueGameToken(
+    {
+      userId: user.id,
+      gameId: game.id,
+      gameSlug: game.slug,
+      portalSessionId: resolved.sessionId,
+      ttlSeconds: 3600,
+    },
+    serverConfig.gameSessionSecret,
+  )
+
+  return { user, session, game, gameToken, sessionId: resolved.sessionId }
 }
 
 export async function createTestUser(): Promise<AuthResponse> {

@@ -5,8 +5,7 @@ import { assertProductionSafety, serverConfig } from '@luciferus/config'
 import { currency, formatAmount } from '@luciferus/config/currency'
 import { economy } from '@luciferus/config/economy'
 import { db } from '@luciferus/db'
-import { games, providers } from '@luciferus/db/schema'
-import { and, arrayContains, asc, eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
@@ -14,28 +13,43 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { AppError } from './lib/errors'
 import { pingRedis } from './lib/redis'
 import { authRoutes } from './routes/auth'
+import { gameRoutes } from './routes/game'
+import { gamesRoutes } from './routes/games'
 import { walletRoutes } from './routes/wallet'
 
-const VERSION = '0.2.0'
+const VERSION = '0.3.0'
 const startedAt = Date.now()
 
 const app = new Hono()
 
 app.use('*', logger())
 
-app.use(
-  '/v1/*',
-  cors({
-    origin: (origin) => {
-      // Локально пускаем любой origin: портал, дев-песочницу, стороннюю игру на своём порту.
-      if (!origin) return undefined
-      if (!serverConfig.isProduction) return origin
-      return origin === serverConfig.portalUrl ? origin : undefined
-    },
-    credentials: true,
-    allowHeaders: ['Content-Type', 'Authorization'],
-  }),
-)
+/**
+ * CORS портала монтируется на конкретные префиксы, а не на весь `/v1/*`.
+ *
+ * Это не косметика. Hono на `OPTIONS` отдаёт preflight-ответ сразу и не передаёт
+ * управление дальше. Если повесить общий CORS на `/v1/*`, он перехватит preflight
+ * игровых маршрутов и ответит своей политикой — а до CORS игр дело не дойдёт.
+ * В браузере это выглядело бы так: игра «не может достучаться до API», без внятной
+ * причины в консоли.
+ *
+ * У игровых путей своя политика (любой origin, без кук, защита токеном) — она и
+ * должна быть единственной, кто отвечает на `/v1/game/*`.
+ */
+const portalCors = cors({
+  origin: (origin) => {
+    // Локально пускаем любой origin: портал, дев-песочницу, стороннюю игру на своём порту.
+    if (!origin) return undefined
+    if (!serverConfig.isProduction) return origin
+    return origin === serverConfig.portalUrl ? origin : undefined
+  },
+  credentials: true,
+  allowHeaders: ['Content-Type', 'Authorization'],
+})
+
+for (const path of ['/v1/auth/*', '/v1/wallet/*', '/v1/games', '/v1/games/*', '/v1/config']) {
+  app.use(path, portalCors)
+}
 
 // ─── Служебное ───────────────────────────────────────────────────────────────────
 
@@ -89,65 +103,15 @@ app.get('/v1/config', (c) =>
   }),
 )
 
-// ─── Каталог игр ─────────────────────────────────────────────────────────────────
+// ─── Каталог игр, аккаунты, кошелёк, игры ────────────────────────────────────────
 
-const gameCardColumns = {
-  slug: games.slug,
-  title: games.title,
-  description: games.description,
-  categories: games.categories,
-  tags: games.tags,
-  volatility: games.volatility,
-  rtp: games.rtp,
-  fairMode: games.fairMode,
-  limits: games.limits,
-  thumbnailUrl: games.thumbnailUrl,
-  embedUrl: games.embedUrl,
-  isStub: games.isStub,
-  providerSlug: providers.slug,
-  providerName: providers.name,
-  providerVerified: providers.verified,
-}
-
-app.get('/v1/games', async (c) => {
-  const category = c.req.query('category')
-
-  const rows = await db
-    .select(gameCardColumns)
-    .from(games)
-    .leftJoin(providers, eq(games.providerId, providers.id))
-    .where(
-      and(
-        eq(games.status, 'live'),
-        category ? arrayContains(games.categories, [category]) : undefined,
-      ),
-    )
-    .orderBy(asc(games.title))
-
-  return c.json({ games: rows, total: rows.length, currency })
-})
-
-app.get('/v1/games/:slug', async (c) => {
-  const slug = c.req.param('slug')
-
-  const [row] = await db
-    .select(gameCardColumns)
-    .from(games)
-    .leftJoin(providers, eq(games.providerId, providers.id))
-    .where(and(eq(games.slug, slug), eq(games.status, 'live')))
-    .limit(1)
-
-  if (!row) {
-    return c.json({ error: 'not_found', message: `Игра «${slug}» не найдена` }, 404)
-  }
-
-  return c.json({ game: row, currency })
-})
-
-// ─── Аккаунты и кошелёк ──────────────────────────────────────────────────────────
-
+app.route('/v1/games', gamesRoutes)
 app.route('/v1/auth', authRoutes)
 app.route('/v1/wallet', walletRoutes)
+
+// Игровые маршруты живут отдельно от портальных: у них другая авторизация
+// (игровой токен вместо сессии) и другой CORS.
+app.route('/v1/game', gameRoutes)
 
 // ─── Ошибки ──────────────────────────────────────────────────────────────────────
 

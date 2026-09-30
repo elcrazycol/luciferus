@@ -41,3 +41,8 @@ logs/
 coverage/
 .turbo/
 .vercel
+
+# собранный SDK, отдаётся порталом как статика — в репозитории ему не место
+apps/portal/public/sdk/
+# собранная эталонная игра
+apps/example-game/public/

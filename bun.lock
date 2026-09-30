@@ -26,12 +26,23 @@
         "typescript": "^5.9.3",
       },
     },
+    "apps/example-game": {
+      "name": "@luciferus/example-game",
+      "version": "1.0.0",
+      "dependencies": {
+        "@luciferus/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
     "apps/portal": {
       "name": "@luciferus/portal",
       "version": "0.1.0",
       "dependencies": {
         "@luciferus/config": "workspace:*",
         "@luciferus/protocol": "workspace:*",
+        "@luciferus/sdk": "workspace:*",
         "next": "^16.3.7",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
@@ -70,6 +81,17 @@
       "version": "0.1.0",
       "dependencies": {
         "zod": "^4.6.5",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
+    "packages/sdk": {
+      "name": "@luciferus/sdk",
+      "version": "1.0.0",
+      "dependencies": {
+        "@luciferus/config": "workspace:*",
+        "@luciferus/protocol": "workspace:*",
       },
       "devDependencies": {
         "typescript": "^5.9.3",
@@ -227,9 +249,13 @@
 
     "@luciferus/db": ["@luciferus/db@workspace:packages/db"],
 
+    "@luciferus/example-game": ["@luciferus/example-game@workspace:apps/example-game"],
+
     "@luciferus/portal": ["@luciferus/portal@workspace:apps/portal"],
 
     "@luciferus/protocol": ["@luciferus/protocol@workspace:packages/protocol"],
+
+    "@luciferus/sdk": ["@luciferus/sdk@workspace:packages/sdk"],
 
     "@next/env": ["@next/env@16.3.7", "", {}, "sha512-/HuhBN1CorqNTmewTIh81yXOQri6B8Ye/c9D7+830XqwVaf8qMnJNrgNxDn6dLtihq8YzBbI6NSAuMKvpr+DvQ=="],
 

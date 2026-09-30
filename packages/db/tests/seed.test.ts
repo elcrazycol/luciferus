@@ -98,10 +98,37 @@ describe('игры и провайдеры из сидов', () => {
     }
   })
 
-  test('embedUrl — абсолютный https-адрес', () => {
+  test('embedUrl — абсолютный http(s) адрес', () => {
     for (const game of SEED_GAMES) {
       const url = new URL(game.embedUrl)
-      expect(url.protocol).toBe('https:')
+      expect(['http:', 'https:']).toContain(url.protocol)
+    }
+  })
+
+  test('объявленные origin похожи на origin, а не на адрес страницы', () => {
+    for (const game of SEED_GAMES) {
+      for (const origin of game.allowedOrigins) {
+        // Origin — это схема, хост и порт, без пути. Иначе проверка в хендшейке
+        // никогда не совпадёт, и игра просто не запустится.
+        expect(origin).toMatch(/^https?:\/\/[^/]+$/)
+
+        const url = new URL(origin)
+        expect(url.pathname).toBe('/')
+        expect(url.search).toBe('')
+      }
+    }
+  })
+
+  test('есть хотя бы одна запускаемая игра: иначе SDK негде проверить вживую', () => {
+    expect(SEED_GAMES.some((game) => game.allowedOrigins.length > 0)).toBe(true)
+  })
+
+  test('origin эталонной игры указывает на её же адрес', () => {
+    for (const game of SEED_GAMES) {
+      if (game.allowedOrigins.length === 0) continue
+
+      const embed = new URL(game.embedUrl)
+      expect(game.allowedOrigins).toContain(embed.origin)
     }
   })
 })

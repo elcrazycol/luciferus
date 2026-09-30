@@ -1,4 +1,5 @@
 import { currency } from '@luciferus/config/currency'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { GameCard } from '@/lib/api'
 
@@ -30,6 +31,10 @@ export function GameCardTile({ game }: { game: GameCard }) {
   const initial = game.title.slice(0, 1).toUpperCase()
   const rtpPercent = game.rtp ? `${(Number.parseFloat(game.rtp) * 100).toFixed(2)}% RTP` : null
   const volatility = game.volatility ? VOLATILITY_LABELS[game.volatility] : null
+
+  // Игра без объявленного origin запущена быть не может: порталу некуда адресовать
+  // приветствие. Показываем это честно, а не кнопкой, которая ведёт в ошибку.
+  const launchable = game.allowedOrigins.length > 0
 
   return (
     <article className="card-gold flex flex-col overflow-hidden rounded-2xl bg-ink-900/70">
@@ -77,15 +82,21 @@ export function GameCardTile({ game }: { game: GameCard }) {
           </span>
         </div>
 
-        {/* Кнопка появится в фазе 3 вместе с launcher'ом и проверкой origin. */}
-        <button
-          type="button"
-          disabled
-          title="Игровой лаунчер появится в фазе 3"
-          className="w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white/35"
-        >
-          Играть — скоро
-        </button>
+        {launchable ? (
+          <Link
+            href={`/game/${game.slug}`}
+            className="w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-3 py-2 text-center text-sm font-semibold text-gold-300 transition-colors hover:bg-gold-500/25"
+          >
+            Играть
+          </Link>
+        ) : (
+          <span
+            title="Игра не объявила свой origin — портал не сможет её запустить"
+            className="w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-medium text-white/35"
+          >
+            Не подключена
+          </span>
+        )}
       </div>
     </article>
   )

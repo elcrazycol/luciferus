@@ -1,0 +1,24 @@
+{
+  "name": "@luciferus/sdk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts",
+    "./build": "./src/build.ts",
+    "./transports": "./src/transports/index.ts"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@luciferus/config": "workspace:*",
+    "@luciferus/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

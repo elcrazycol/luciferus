@@ -4,6 +4,7 @@ import type {
   PublicUser,
   RegisterRequest,
 } from '@luciferus/protocol/auth'
+import type { GameLaunch } from '@luciferus/protocol/embed'
 import type { LedgerPage, WalletOperationResult, WalletOverview } from '@luciferus/protocol/wallet'
 
 /**
@@ -113,6 +114,18 @@ export function claimReloadBonus(
   return apiFetch('/v1/wallet/reload-bonus', { method: 'POST', token, body: {} })
 }
 
+// ─── Запуск игры ─────────────────────────────────────────────────────────────────
+
+/**
+ * Всё для открытия игры: адрес iframe, игровой токен, баланс и лимиты.
+ *
+ * Токен игровой, а не портальный: он ограничен одной игрой и живёт два часа.
+ * Портал передаёт его игре через postMessage — в адресной строке он не появляется.
+ */
+export function launchGame(token: string, slug: string): Promise<GameLaunch> {
+  return apiFetch<GameLaunch>(`/v1/games/${encodeURIComponent(slug)}/launch`, { token })
+}
+
 // ─── Каталог игр ─────────────────────────────────────────────────────────────────
 
 export type GameCard = {
@@ -127,6 +140,8 @@ export type GameCard = {
   limits: { minBet: number; maxBet: number; maxWin: number }
   thumbnailUrl: string | null
   embedUrl: string
+  /** Объявленные игрой origin'ы. Пусто — портал не сможет её запустить. */
+  allowedOrigins: string[]
   isStub: boolean
   providerSlug: string | null
   providerName: string | null
