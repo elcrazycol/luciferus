@@ -1,0 +1,41 @@
+name: luciferus-casinos
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: luciferus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-luciferus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-luciferus}
+      POSTGRES_DB: ${POSTGRES_DB:-luciferus}
+    ports:
+      # Нестандартные порты: у многих локально уже висит Postgres/Redis на 5432/6379,
+      # и проект обязан подниматься одной командой без конфликтов.
+      - '${POSTGRES_PORT:-55432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-luciferus} -d ${POSTGRES_DB:-luciferus}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: luciferus-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - '${REDIS_PORT:-56379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:

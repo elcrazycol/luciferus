@@ -1,0 +1,536 @@
+# LuciferusCasinos — план реализации
+
+Опенсорсная платформа-обёртка «онлайн-казино» на фейковом балансе. Любой разработчик
+может прикрутить свою игру (слот, краш, стол, что угодно) через тонкий SDK, а портал
+выглядит и ведёт себя как настоящее казино: лобби, кошелёк, провайдеры, акции, VIP,
+лидерборды, чат, живая лента выигрышей. Денег нет — есть симуляция.
+
+---
+
+## 0. Что строим и что НЕ строим
+
+**Строим**
+
+- Портал-лобби: каталог игр, категории, провайдеры, страница игры, кошелёк, профиль,
+  акции, лидерборды, чат, лента выигрышей, панель разработчика, админка модерации.
+- Единый кошелёк портала: регистрация → стартовый бонус C$250 (симуляция), леджер
+  всех операций, «дозаправка» баланса по кулдауну.
+- SDK, который разработчик игры подключает одной строкой и получает готовые
+  `balance / bet / payout / chat / fairness / presence`.
+- Проверяемая честность (commit-reveal + HMAC), страница верификации сидов.
+- Realtime: WebSocket-комнаты (чат, presence, лента выигрышей, тикер джекпота).
+- Слой симуляции: фейковые депозиты/выводы, KYC-заглушка, бонусы, миссии, VIP-лестница.
+
+**Осознанно НЕ строим**
+
+- Никаких реальных платежей, крипты, выводов, KYC-интеграций. Все «денежные» пути —
+  заглушки с явной пометкой `simulation`.
+- Никаких «настоящих» RNG-сертификаций, ответственной игры, лимитов по закону.
+- Никакого shared-аутентити с внешними сервисами (пока).
+
+**Главный принцип дизайна:** платформа — это *хост и кошелёк*, а не игровой движок.
+Игры живут где угодно, портал их не собирает, не билдит и не хостит. Это то, что делает
+порог входа для контрибьютора минимальным: сделал игру на чём угодно → задеплоил
+куда угодно → добавил ссылку.
+
+---
+
+## 1. Стек (финальные решения)
+
+| Слой | Решение | Почему |
+|---|---|---|
+| Монорепа | **Turborepo + Bun workspaces** | Bun как пакетный менеджер и рантайм, Turborepo даёт кэш задач и граф |
+| Портал | **Next.js 15 (App Router) + React 19 + TS** | SSR/SEO для каталога, самый большой пул контрибьюторов |
+| Стили | **Tailwind CSS + shadcn/ui** | Быстрый кастом под «казино-вайб», всё редактируемо локально |
+| API | **Hono на Bun** | HTTP + WebSocket в одном процессе, типы шарятся с SDK |
+| БД | **PostgreSQL 16 + Drizzle ORM** | Транзакции для кошелька, типизированные миграции |
+| Realtime | **WebSocket + Redis pub/sub** | Масштабируется на N инстансов API, комнаты по игре |
+| Кэш/лимиты | **Redis 7** | Rate limit, сессии, presence, лидерборды, de-dup идемпотентности |
+| Валидация | **Zod** (`packages/protocol`) | Один источник правды для postMessage, REST, WS и манифеста |
+| Auth | Своя: `Bun.password` (argon2id) + session-cookie + `jose` JWT для игр | Только `username / password / displayName`, как просил |
+| Fairness | `packages/fairness` (HMAC-SHA256, commit-reveal) | Общий код для сервера, SDK и страницы верификации |
+| Тесты | **Vitest** + **Playwright** | Юнит для кошелька/fairness, e2e с примером игры |
+| Self-host | **Docker Compose**, одна команда | Критерий популярности опенсорса |
+| Логи | **pino** (+ OTel позже) | Структурные логи сразу |
+
+---
+
+## 2. Карта репозитория
+
+```
+LuciferusCasinos/
+├─ apps/
+│  ├─ portal/          # Next.js: лобби, игра, кошелёк, кабинет разработчика, админка
+│  ├─ api/             # Hono: REST /v1/* + WS /ws
+│  ├─ example-game/    # эталонный слот (ванильный TS) — живая документация и e2e-фикстура
+│  └─ docs/            # сайт документации (SDK, манифест, гайд автора игры)
+├─ packages/
+│  ├─ sdk/             # ядро (framework-agnostic) + IIFE-бандл для CDN + React-обёртка
+│  ├─ protocol/        # zod-схемы и типы: postMessage, REST, WS
+│  ├─ fairness/        # provably fair: генерация, комбинация сидов, верификация
+│  ├─ manifest/        # схема casino.game.json + CLI-валидатор
+│  ├─ db/              # drizzle-схема, миграции, сиды
+│  ├─ ui/              # общие компоненты, токены дизайна
+│  └─ config/          # tsconfig / eslint / prettier / tailwind preset
+├─ infra/              # docker-compose.yml, Dockerfile'ы, Caddyfile (TLS для локалки)
+├─ docs/               # ARCHITECTURE.md, SDK.md, GAME_AUTHORING.md, THREAT_MODEL.md
+└─ .github/            # CI, шаблоны issue/PR, «добавить игру»
+```
+
+---
+
+## 3. Ключевые архитектурные решения
+
+### 3.1 Границы доверия
+
+Игра — **недоверенный код на чужом домене в iframe**. Она никогда не имеет доступа к
+кукам портала, к чужим данным и к неограниченным операциям. Всё, что она может, описано
+в скоуп-токене: только свой `gameId`, только свой игрок, только ставки/выплаты в
+лимитах. Даже если игра украдёт свой токен — она украла доступ только к своему скоупу.
+
+```
+┌────────────────────────┐         postMessage          ┌──────────────────┐
+│  Портал (portal)       │  ◄─── hello / session ────►  │  Игра (iframe)   │
+│  origin: portal.dev    │       targetOrigin pinned     │  любой origin    │
+└───────────┬────────────┘                              └────────┬─────────┘
+            │ httpOnly cookie (сессия игрока)                     │ Bearer session token
+            ▼                                                     ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│  API (Hono)  ·  /v1/wallet/*  /v1/games/*  /v1/fair/*  /ws                 │
+│  Postgres (wallets + ledger, источник правды)  ·  Redis (pub/sub, лимиты)  │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Кошелёк: ledger-first
+
+Единственный источник правды — таблица `ledger`. `wallets.balance` — материализованный
+кэш, который обновляется **в той же транзакции**, что и запись в леджер. Любая мутация:
+
+1. Транзакция `SERIALIZABLE`/`FOR UPDATE` строки кошелька.
+2. Проверка: идемпотентность (`idempotency_key`), лимиты игры, хватает ли баланса.
+3. Запись в `ledger` + атомарный `UPDATE wallets SET balance = balance ± x WHERE balance >= x`.
+4. Публикация события в Redis → WS-каналу `user:<id>.balance`.
+
+Это даёт бесплатно: историю транзакций, аудит, восстановление баланса, отладку жалоб
+«у меня списалось дважды».
+
+### 3.3 Гибридная честность (выбор №2)
+
+Игра в манифесте объявляет `fairMode`:
+
+- `"client"` — клиент сам считает исход, сервер доверяет в пределах лимитов.
+  Для хакатонных/шуточных игр. Быстро, тупо, честно по духу «играй ради игры».
+- `"provably-fair"` — сервер выдаёт пару сидов на раунд:
+  1. До раунда сервер генерит `serverSeed`, публикует `sha256(serverSeed)` (commit).
+  2. Игра присылает `clientSeed` (или соглашается на случайный от портала).
+  3. Результат: `outcome = HMAC_SHA256(serverSeed, clientSeed + ":" + nonce)` → детерминированно
+     превращается в исход объявленной генераторной функцией.
+  4. После ротации сида сервер **раскрывает** `serverSeed`, страница `/fairness`
+     пересчитывает исход в браузере → «проверь меня сам».
+
+Верификация живёт в `packages/fairness`, поэтому портал, SDK и сторонний чекер считают
+одно и то же. Пользователь может заменить свой `clientSeed` после каждого раскрытия.
+
+### 3.4 Realtime: HTTP для денег, WS для чувств
+
+- **HTTP** — всё, что меняет баланс: идемпотентно, ретраится, легко логируется.
+- **WS** — всё, что делает казино живым: чат, presence («12 игроков в Lucky 7s»),
+  лента выигрышей, тикер джекпота, нотификации, обновление баланса пушем.
+
+Каналы: `lobby.wins`, `game:<id>.chat`, `game:<id>.presence`, `user:<id>.balance`,
+`jackpot.tick`. Redis pub/sub → фан-аут на все инстансы API.
+
+### 3.5 Экономика
+
+- Стартовый бонус: **CC$250** при регистрации, одна строка в леджер + попап «зачислено».
+- «Real-казино-петля»: при балансе ниже порога доступна кнопка Reload Bonus с кулдауном
+  (например, +C$100 раз в 15 минут). Это то, что не даёт игроку застрять и держит его в игре.
+- Валюта — **C$ (CrazyBucks)**, внутренняя фиктивная монета. Живёт в одном месте:
+  `packages/config/currency.ts` → `{ code: 'C$', name: 'CrazyBucks', symbol: 'C$',
+  decimals: 2, isSimulation: true }`. Портал, API, SDK и леджер рендерят её из этого
+  конфига, поэтому форк может переименовать валюту в одну строку.
+- Глобальный баннер `DEMO · CrazyBucks, no real value` висит всегда, плюс
+  `DISCLAIMER.md` в репозитории и в футере.
+- Анти-абьюз здесь не про деньги, а про портал: спам в чате, флуд ставок, XSS, DoS.
+  См. `THREAT_MODEL.md`.
+
+---
+
+## 4. SDK: как выглядит «в одну строку»
+
+### 4.1 Подключение
+
+```html
+<!-- вариант 1: CDN, auto-init -->
+<script src="http://portal.local:3000/sdk/v1.js" async></script>
+
+<!-- вариант 2: пакет, для типизированных проектов -->
+<script type="module">
+  import { casino } from '@luciferus/sdk'
+</script>
+```
+
+### 4.2 Что доступно игре
+
+```ts
+// window.Casinos — уже готов к моменту загрузки игры (auto-init отработал хендшейк)
+const c = Casinos
+
+c.player            // { id, username, displayName, avatarUrl }
+c.balance           // текущий баланс
+c.currency          // 'C$' — CrazyBucks (симуляция)
+c.limits            // { minBet, maxBet, maxWin }
+c.isInsidePortal    // false → включён локальный mock-кошелёк для разработки
+
+c.on('balance', (v) => ui.render(v))
+c.on('ready', ({ player, balance }) => boot())
+
+await c.bet(10, { roundId: 'r-42', meta: { line: 3 } })   // списание, идемпотентно
+await c.payout(150, { roundId: 'r-42' })                   // начисление
+await c.rollback('r-42')                                   // отмена раунда (краш/ошибка)
+
+c.chat.send('так близко к джекпоту')
+c.chat.on('message', (m) => ui.push(m))
+
+c.fair.next()        // { serverSeedHash, clientSeed, nonce }
+await c.fair.rotate() // раскрыть serverSeed, получить новый хэш
+c.events.track('feature.triggered', { id: 'free-spins' })
+
+c.ready()            // Promise, если нужно дождаться вместо события
+```
+
+### 4.3 Хендшейк (postMessage, версионированный протокол)
+
+1. Игра грузит SDK → SDK постит родителю `casino:hello@1` с `{ gameId, sdkVersion, nonce }`
+   и списком `idle` до ответа.
+2. Портал сверяет origin отправителя с `allowed_origins` зарегистрированной игры.
+3. Портал отвечает `casino:session@1` на **точный origin игры** (никогда `*`) с
+   `{ sessionToken, player, balance, currency, limits, fair: { serverSeedHash, nonce } }`.
+4. Дальше SDK ходит в API по HTTP с `Authorization: Bearer <sessionToken>`.
+5. Ошибка/таймаут 3 сек → `casino:error`, SDK падает в mock-режим и рисует дев-панель.
+
+Свойства токена: подписан EdDSA/HS256, TTL ~2 часа, в себе несёт `{ sessionId, userId,
+gameId, jti }`, проверяется на каждом запросе, отзывается при смене сессии. Токен одного
+скоупа нельзя применить к другой игре (проверка `gameId` в сервисах).
+
+### 4.4 Dev-режим (это важно для контрибьюторов)
+
+Если игра открыта **не** в iframe портала — SDK поднимает локальный mock-кошелёк в
+`localStorage` с C$250 и работающими ставками, плюс оверлей-дев-панель: баланс, кнопка
+«+1000», список событий, кнопка «скопировать сниппет подключения». Разработчик игры
+может вообще не запускать портал, чтобы начать писать. Проверить «боевой» режим —
+открыть `portal/dev/sandbox?game=<url>` (портал-песочница, которая запускает произвольный
+URL в iframe с тестовым игроком).
+
+---
+
+## 5. Манифест игры (`casino.game.json`)
+
+Схема живёт в `packages/manifest`, валидатор — `bunx @luciferus/manifest validate`.
+
+```json
+{
+  "slug": "lucky-7s",
+  "title": "Lucky 7s",
+  "version": "1.2.0",
+  "author": { "name": "Studio X", "url": "https://x.dev" },
+  "embed": "https://lucky7s.example.com/play",
+  "origins": ["https://lucky7s.example.com"],
+  "categories": ["slots", "classic"],
+  "fairMode": "provably-fair",
+  "limits": { "minBet": 0.1, "maxBet": 100, "maxWin": 5000 },
+  "sdk": "^1.0.0",
+  "thumbnail": "https://lucky7s.example.com/thumb.png",
+  "rtp": 0.96,
+  "volatility": "medium",
+  "freespinMode": false,
+  "events": ["bet", "win", "feature"]
+}
+```
+
+Регистрация игры — два пути (см. открытые вопросы): через `POST /v1/games` с токеном
+провайдера (авто-регистрация, статус `pending`) или через форму в кабинете разработчика.
+В дев-режиме `AUTO_APPROVE_GAMES=true` → сразу `live`.
+
+---
+
+## 6. Модель данных (Drizzle, основные таблицы)
+
+```
+users            id, username(uniq), display_name, password_hash, role, status, created_at
+sessions         id, user_id, token_hash, ip, user_agent, expires_at, revoked_at
+wallets          user_id(PK), balance numeric(18,2), currency, reload_available_at
+ledger           id, user_id, game_slug?, round_id?, type, amount, balance_after,
+                 idempotency_key(uniq), meta jsonb, created_at      ← источник правды
+games            id, slug(uniq), title, description, provider_id, embed_url,
+                 allowed_origins text[], status, fair_mode, limits jsonb, rtp,
+                 categories text[], tags text[], thumbnail_url, manifest jsonb,
+                 submitted_by, live_version_id, created_at
+game_versions    id, game_id, version, embed_url, manifest jsonb, changelog, published_at
+providers        id, slug, name, url, avatar_url, verified
+rounds           id, user_id, game_id, round_id(uniq with user+game), bet, payout,
+                 server_seed_hash, server_seed, client_seed, nonce, verified, created_at
+seed_pairs       id, user_id, game_id, server_seed, server_seed_hash, client_seed,
+                 nonce, revealed_at
+chat_messages    id, room, user_id, body, created_at, deleted_at
+promotions       id, slug, kind, title, description, config jsonb, starts_at, ends_at
+missions         id, user_id, mission_slug, progress, completed_at
+vip_levels       id, level, name, requirements jsonb, perks jsonb
+transactions     id, user_id, kind(deposit|withdrawal), method, amount, status,
+                 is_simulation true, created_at
+leaderboards     id, period, game_slug?, snapshot jsonb, created_at
+audit_log        id, actor_id, action, target, meta jsonb, created_at
+```
+
+Денормализации под лобби (`games.players_online`, `games.plays_total`) обновляются
+батчами из Redis, чтобы не бить Postgres на каждый спин.
+
+---
+
+## 7. API-контракты
+
+### REST (`/v1`)
+
+```
+POST   /auth/register            { username, displayName, password } → сессия + C$250
+POST   /auth/login               { username, password } → сессия
+POST   /auth/logout
+GET    /me                       профиль + баланс
+
+GET    /wallet                   баланс, валюта, history
+GET    /wallet/ledger?cursor=    пагинация истории операций
+POST   /wallet/reload-bonus      +C$100 по кулдауну
+POST   /wallet/bet               { roundId, amount, gameSessionToken, meta }
+POST   /wallet/payout            { roundId, amount, gameSessionToken, meta }
+POST   /wallet/rollback          { roundId, reason }
+
+GET    /games                    фильтры: category, provider, sort, search, cursor
+GET    /games/:slug
+GET    /games/:slug/launch       → { embedUrl, sessionToken(scopped), limits, fair }
+POST   /games                    регистрация игры (provider token)
+PATCH  /games/:slug              обновление (владелец/админ)
+
+GET    /fair/seed-pairs          текущие сиды пользователя
+POST   /fair/rotate              раскрыть serverSeed, выдать новый
+POST   /fair/verify              пересчитать исход по (serverSeed, clientSeed, nonce)
+
+POST   /chat/:room/messages
+GET    /leaderboards/:period
+
+POST   /sim/deposits             фейковый депозит (заглушка метода оплаты)
+POST   /sim/withdrawals          фейковый вывод (заглушка KYC)
+
+GET    /admin/...                модерация игр, юзеры, баланс-корректировки
+```
+
+### WebSocket (`/ws`)
+
+```jsonc
+// клиент → сервер
+{ "t": "subscribe",   "room": "game:lucky-7s.chat" }
+{ "t": "chat.send",   "room": "game:lucky-7s.chat", "body": "hi" }
+{ "t": "presence.set", "room": "game:lucky-7s", "state": "in-round" }
+
+// сервер → клиент
+{ "t": "balance",   "balance": 1420.5, "delta": 150 }
+{ "t": "chat.msg",  "user": {...}, "body": "...", "ts": 1750000000 }
+{ "t": "presence",  "room": "...", "count": 12, "players": [...] }
+{ "t": "win.big",   "user": {...}, "game": "lucky-7s", "amount": 2500 }
+{ "t": "jackpot",   "value": 918234.12 }
+```
+
+Все сообщения валидируются через `packages/protocol` (Zod) на обеих сторонах —
+одна изменённая схема ломает сборку, а не рантайм в проде.
+
+---
+
+## 8. Дизайн портала
+
+Вайб: тёмная тема, неон-акценты, крупные анимированные превью, тикер джекпота,
+живая лента выигрышей справа, всё дышит и двигается. При этом без обмана: баннер
+демо-режима, все «деньги» подписаны как симуляция.
+
+| Страница | Содержание |
+|---|---|
+| `/` | hero, джекпот-тикер, лента выигрышей, категории, топ-игры, провайдеры |
+| `/games` | каталог с фильтрами (категория, провайдер, волатильность, RTP), поиск |
+| `/game/[slug]` | iframe-лаунчер, сайдбар: сессия, чат, fairness-таб, статистика |
+| `/providers/[slug]` | витрина студии, её игры |
+| `/wallet` | баланс, история, фейковый депозит/вывод, reload bonus |
+| `/promotions` | бонусы-заглушки, миссии, VIP-лестница |
+| `/leaderboards` | за день/неделю/всё время, по играм и глобально |
+| `/fairness` | сиды пользователя, раскрытие, ручная верификация раунда |
+| `/chat` | общий чат лобби |
+| `/u/[username]` | публичный профиль: игры, достижения, крупные вины |
+| `/settings` | имя, пароль, аватар, приватность |
+| `/developers` | доки SDK, манифест, песочница, генератор сниппета |
+| `/admin` | очередь модерации игр, юзеры, корректировка баланса, бан чата |
+
+---
+
+## 9. Слой «настоящего казино» (всё — заглушки)
+
+Чтобы выглядело реально, но не было реальным:
+
+- **Депозиты**: форма с картой/крипто-кошельком, любой ввод → «успех» через 2 сек.
+  Всегда `is_simulation: true`, в леджере `type: 'sim_deposit'`.
+- **Выводы**: форма + фейковый KYC (загрузить «документ» → статус «на проверке» → «одобрено»).
+- **Методы оплаты**: Visa/Mastercard/USDT/Bitcoin — иконки, обманка ради вайба.
+- **Бонусы и промо**: welcome-пакет, релоад-бонусы, фриспины, кэшбэк.
+- **Миссии/ачивки**: «выиграй 5 раз подряд», «сделай 100 спинов» → титулы в профиле.
+- **VIP-лестница**: бронза → серебро → … → «Люцифер», с косметическими перками.
+- **Боты в лобби**: сидированные «игроки» с фейковыми винами, чтобы лента жила.
+  Явно помечены в админке как боты, в UI — неотличимы (это и есть вайб).
+- **Live-казино**: заглушка-таблица со стоковым видео/анимацией крупье, ставки реальные
+  (внутренние), крупье — фейковое.
+
+Всё это конфигурируемо фича-флагами, чтобы форк мог выключить симуляцию целиком.
+
+---
+
+## 10. Фазы реализации
+
+### Фаза 0 — фундамент (неделя 1) — ✅ сделано
+- [x] Turborepo, Bun workspaces, единый tsconfig, Biome (lint + format одним проходом)
+- [x] `infra/docker-compose.yml`: Postgres + Redis, порты 55432/56379
+- [x] `packages/db`: схема (7 таблиц), миграции, идемпотентные сиды (2 провайдера, 3 игры, 10 юзеров, 8 ботов)
+- [x] `apps/api` (Hono: health, конфиг валюты, каталог игр), `apps/portal` (Next.js: лобби на живых данных)
+- [x] GitHub Actions: lint, typecheck, test, миграции и сиды против реальных Postgres/Redis
+- [x] LICENSE (MIT), README, CONTRIBUTING, DISCLAIMER, CODE_OF_CONDUCT не нужен — см. ниже
+- [x] Тесты: сид-инварианты (12) и служебные маршруты API (3)
+
+**Готово, когда:** `bun install && bun run setup` → портал показывает лобби из сидов. ✅ проверено.
+
+**Отклонения от первоначального плана** (каждое — осознанное, не «руки не дошли»):
+
+| Было в плане | Стало | Почему |
+|---|---|---|
+| ESLint + Prettier | **Biome** | один бинарь и один конфиг вместо плагинного зоопарка, на порядок быстрее, покрывает TS/JSON/CSS |
+| Vitest | **`bun test`** | проект уже на Bun, нативный рантайм без лишних зависимостей; тяжёлые сценарии всё равно уходят в Playwright |
+| Caddy для TLS | Postgres + Redis | локальный TLS в фазе 0 ничего не проверяет; Caddy появится вместе с проверкой origin игр в фазе 2–3 |
+| Порты 5432/6379 | **55432/56379** | на машине разработчика почти всегда уже висит локальный Postgres — «одна команда» ломалась на первом шаге |
+| `docker build` в CI | миграции + сиды в CI | Dockerfile'ов приложений ещё нет, они появятся к публичному деплою (фаза 7) |
+| CODE_OF_CONDUCT, шаблоны issue/PR | отложено | имеет смысл заводить вместе с публикацией репозитория, а не до неё |
+
+### Фаза 1 — аккаунты и кошелёк (неделя 2)
+- [ ] `users`/`sessions`, регистрация (`username/displayName/password`), argon2id
+- [ ] Стартовый бонус C$250 через леджер, приветственный попап
+- [ ] `/v1/wallet*`: bet/payout/rollback/history, идемпотентность, лимиты, Redis rate limit
+- [ ] `/wallet` UI: баланс, история, reload bonus
+- [ ] Юнит-тесты кошелька: двойной payout, отрицательный баланс, гонки транзакций
+
+**Готово, когда:** кошелёк выдерживает параллельные ставки и не может уйти в минус (есть тест).
+
+### Фаза 2 — SDK + хендшейк + песочница (недели 3–4) — **ключевая веха**
+- [ ] `packages/protocol`: схемы postMessage + REST + WS
+- [ ] `packages/sdk`: ядро, IIFE-сборка, `window.Casinos`, auto-init, mock-режим, дев-панель
+- [ ] Портал: launcher, сверка origin, выдача скоуп-токена, `/dev/sandbox`
+- [ ] `apps/example-game`: эталонный слот на ванильном TS, хостится отдельным портом
+- [ ] `/developers`: доки SDK «за 5 минут», генератор сниппета
+- [ ] Playwright e2e: игра в iframe делает ставку → баланс портала меняется
+
+**Готово, когда:** посторонний человек по README за 15 минут запускает свою игру на портале.
+
+### Фаза 3 — каталог игр и регистрация (неделя 5)
+- [ ] `games`/`game_versions`/`providers`, фильтры, поиск, категории
+- [ ] Форма + API регистрации игры, статусы, модерация в `/admin`
+- [ ] `/game/[slug]` с сайдбаром, `/providers/[slug]`, превью-карточки
+- [ ] Боты-игроки и агрегированная статистика игр
+
+### Фаза 4 — provably fair (неделя 6)
+- [ ] `packages/fairness`: генерация, комбинация, детерминированный вывод исхода
+- [ ] `seed_pairs`, commit-reveal, ротация по запросу игрока
+- [ ] `/fairness`: сиды, раскрытие, ручной ввод значений и верификация раунда
+- [ ] `fairMode` в манифесте, документация «как заявить честность»
+
+### Фаза 5 — realtime (неделя 7)
+- [ ] WS-шлюз, аутентификация по сессии, комнаты, heartbeat, reconnection
+- [ ] Redis pub/sub фан-аут, presence по играм, «12 игроков сейчас»
+- [ ] Чат (лобби + игры), модерация, rate limit, фильтр мата, XSS-safe рендер
+- [ ] Живая лента выигрышей, тикер джекпота, нотификации
+
+### Фаза 6 — иллюзия казино (неделя 8)
+- [ ] Фейковые депозиты/выводы/KYC, методы оплаты, история транзакций
+- [ ] Бонусы, миссии, ачивки, VIP-лестница, кэшбэк
+- [ ] Лидерборды (снапшоты), публичные профили
+- [ ] Полировка: анимации, звуки, мобильная вёрстка, скелетоны
+
+### Фаза 7 — харденинг и запуск (неделя 9)
+- [ ] `THREAT_MODEL.md` + закрытие найденных дыр (CSP, origin, токены, rate limit)
+- [ ] Сайт документации, `GAME_AUTHORING.md`, 3–4 сторонние игры-примеры
+- [ ] Публичное демо, README с gif'ками, релизные теги, changelog
+- [ ] i18n (ru/en), метрики (OTel/prometheus), бэкапы БД
+
+---
+
+## 11. Качество, безопасность, угрозы
+
+**Тесты.** Юнит — кошелёк, fairness, протокол (Zod round-trip). Интеграция — API против
+реального Postgres/Redis в контейнерах. E2E — Playwright: регистрация → стартовый бонус →
+игра в iframe → ставка → верификация раунда. `apps/example-game` работает как фикстура.
+
+**Модель угроз (коротко).** Денег нет → главная угроза не кража, а **абьюз**:
+XSS через чат/названия игр, спам и флуд, DoS на WS, кража своего скоуп-токена (не даёт
+ничего сверх), SSRF через превью-генерацию, кривой контент в играх-примерах.
+
+**Меры.** Строгая валидация Zod на границе, `Content-Security-Policy`, санитайз
+пользовательского текста, скоуп-токены + короткий TTL + проверка `gameId`, rate limit
+в Redis на всё публичное, лимиты на размер слага/описания, ручная модерация новых игр,
+`rel="noopener"` + `referrerPolicy` на iframe, отказ от `sandbox="allow-same-origin
+allow-scripts"` в пользу кросс-доменной изоляции.
+
+---
+
+## 12. Опенсорс-обвязка
+
+- README: что это, скриншот лобби, gif «своя игра за 5 минут», `docker compose up`,
+  ссылка на демо, дисклеймер «демо, без реальных денег».
+- `CONTRIBUTING.md`: как поднять локально, как добавить игру, стиль, что не merge'им.
+- Шаблон issue «🎰 Добавить игру» и `good first issue` на UI-полировку и игры-примеры.
+- Дискорд/GitHub Discussions для витрины игр сообщества.
+- Явный `DISCLAIMER.md`: проект — песочница, реальных ставок нет, не аффилирован
+  с гэмблинг-индустрией, только для развлечения и обучения.
+
+---
+
+## 13. Первые 10 коммитов
+
+1. `chore: init turborepo + bun workspaces + config packages`
+2. `feat(db): drizzle schema (users, wallets, ledger, games) + migrations`
+3. `feat(infra): docker compose (postgres, redis, caddy) + one-command up`
+4. `feat(api): hono skeleton + health + zod error handling`
+5. `feat(auth): register/login with argon2id + session cookies + C$250 signup bonus`
+6. `feat(wallet): ledger-first bet/payout/rollback + idempotency + limits`
+7. `feat(protocol): zod schemas for postMessage / REST / WS + tests`
+8. `feat(sdk): core client + IIFE bundle + auto-init handshake + mock mode`
+9. `feat(portal): lobby, game launcher with origin validation, dev sandbox`
+10. `feat(example-game): reference slot as living documentation + e2e fixture`
+
+---
+
+## 14. Решённые вопросы и принятые умолчания
+
+Закрыто твоими ответами:
+
+1. **Лицензия — MIT.** `LICENSE` в корне, SPDX-заголовки не форсируем, чтобы не мешать
+   контрибьюторам.
+2. **Валюта — C$ (CrazyBucks).** Фиктивная монета, единый конфиг `packages/config/currency.ts`,
+   постоянный баннер DEMO в UI.
+
+Ниже — умолчания, которые я применяю, если не скажешь иначе. Каждое меняется флагом или
+одним файлом, переделывать не придётся:
+
+3. **Регистрация игр** — оба пути: API с токеном провайдера + форма в кабинете. Дефолт
+   для чужих игр — модерация; `AUTO_APPROVE_GAMES=true` для локальной разработки.
+4. **i18n** — сразу `ru` + `en`. Тексты через словари с первого коммита, чтобы не
+   переписывать UI потом.
+5. **Публичное демо** — код пишу так, чтобы демо поднималось одной командой; конкретный
+   хостинг и домен решим на фазе 7, авто-деплой из `main` настроим там же.
+6. **Боты в лобби** — да, сидированные, с флагом `is_bot` в БД. В UI неотличимы, в
+   админке видны и выключаются одним тумблером.
+7. **Аватарки** — генеративные (детерминированно из `userId`, стиль в `packages/ui`).
+   Загрузку файлов не делаем, пока не понадобится.
+8. **Модерация чата** — список запрещённых слов + ручные баны/муты админом + rate limit.
+9. **Валюта в API** — все суммы в леджере храним как `numeric(18,2)`, поля называем
+   `amount`/`balance` без указания валюты; код валюты живёт в конфиге и в `wallets.currency`.
+   Это позволяет форку перейти на другую монету без миграции данных.

@@ -1,0 +1,21 @@
+{
+  "name": "@luciferus/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@luciferus/config": "workspace:*",
+    "@luciferus/db": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "hono": "^4.13.11"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
