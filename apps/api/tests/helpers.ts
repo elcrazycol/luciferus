@@ -1,9 +1,10 @@
 import { expect } from 'bun:test'
 import { serverConfig } from '@luciferus/config'
 import { db } from '@luciferus/db'
-import { games, ledger, users, wallets } from '@luciferus/db/schema'
+import { games, ledger, providers, users, wallets } from '@luciferus/db/schema'
 import type { AuthResponse } from '@luciferus/protocol/auth'
 import type { ApiErrorCode } from '@luciferus/protocol/errors'
+import type { GameStatus } from '@luciferus/protocol/game'
 import { eq, like, sql } from 'drizzle-orm'
 import { AppError } from '../src/lib/errors'
 import { issueGameToken } from '../src/lib/signed-token'
@@ -71,6 +72,18 @@ export async function createTestGame(
 
 export async function cleanupTestGames(): Promise<void> {
   await db.delete(games).where(like(games.slug, 'spec-game-%'))
+  // Студии авторов из тестов создаются автоматически и уходят следом.
+  await db.delete(providers).where(like(providers.slug, 'u-spec%'))
+}
+
+/**
+ * Явно выставляет статус игры.
+ *
+ * Нужно, потому что начальный статус заявки зависит от `AUTO_APPROVE_GAMES`,
+ * а тесты обязаны вести себя одинаково и в CI, и на машине разработчика.
+ */
+export async function setGameStatus(slug: string, status: GameStatus): Promise<void> {
+  await db.update(games).set({ status }).where(eq(games.slug, slug))
 }
 
 /** Полный цикл: игрок + сессия + игра + игровой токен. */

@@ -1,5 +1,6 @@
 export * from './auth'
 export * from './embed'
 export * from './errors'
+export * from './game'
 export * from './money'
 export * from './wallet'

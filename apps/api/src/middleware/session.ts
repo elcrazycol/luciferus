@@ -36,3 +36,16 @@ export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   c.set('session', session)
   await next()
 })
+
+/**
+ * Пропускает только админов. Монтируется строго ПОСЛЕ `requireSession`:
+ * проверять роль не у кого, пока сессии в контексте нет.
+ */
+export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
+  const session = c.get('session')
+  if (session.user.role !== 'admin') {
+    throw AppError.forbidden('Нужны права администратора')
+  }
+
+  await next()
+})

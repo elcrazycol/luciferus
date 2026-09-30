@@ -380,8 +380,7 @@ export async function getLedger(
 /**
  * Дозаправка баланса. Сделана отдельно от `applyEntry`, потому что помимо баланса
  * обновляет кулдаун — и оба изменения должны быть атомарны вместе с проверкой.
- */
-export async function claimReloadBonus(
+ */ export async function claimReloadBonus(
   userId: string,
 ): Promise<WalletOperationResult & { nextAvailableAt: string }> {
   const bonus = serverConfig.reloadBonus
@@ -440,5 +439,43 @@ export async function claimReloadBonus(
       idempotent: false,
       nextAvailableAt: nextAvailableAt.toISOString(),
     }
+  })
+}
+
+// ─── Административные операции ───────────────────────────────────────────────────
+
+export type AdminAdjustment = {
+  userId: string
+  /** Знаковая сумма: положительная — начислить, отрицательная — списать. */
+  amount: number
+  note: string
+  adminId: string
+}
+
+/**
+ * Ручная правка баланса администратором.
+ *
+ * Идёт тем же путём, что и всё остальное: через леджер, с блокировкой кошелька.
+ * Соблазн «просто обновить wallets» здесь особенно велик, но тогда у игрока
+ * изменится баланс без записи в журнале — и первый же вопрос «откуда деньги»
+ * останется без ответа.
+ */
+export async function adjustBalance(input: AdminAdjustment): Promise<WalletOperationResult> {
+  if (!Number.isFinite(input.amount) || input.amount === 0) {
+    throw AppError.badRequest('Сумма корректировки должна быть отлична от нуля')
+  }
+
+  const amount = toDecimal(Math.abs(input.amount))
+  const signed = input.amount > 0 ? amount : negateDecimal(amount)
+
+  return applyEntry({
+    userId: input.userId,
+    type: 'admin_adjust',
+    amount: signed,
+    // Каждая корректировка уникальна: это не повтор операции, а новое действие.
+    idempotencyKey: `admin:${crypto.randomUUID()}`,
+    meta: { note: input.note, adminId: input.adminId },
+    // Списывать больше, чем есть, нельзя даже админу: баланс не уходит в минус.
+    requireFunds: input.amount < 0,
   })
 }

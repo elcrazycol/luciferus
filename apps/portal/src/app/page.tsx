@@ -79,11 +79,17 @@ export default async function LobbyPage() {
       </section>
 
       <section className="mt-10">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-white">Каталог</h2>
-          <p className="text-xs text-white/40">
-            {online ? 'данные из Postgres через API' : 'нет соединения с API'}
-          </p>
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold text-white">Популярное сейчас</h2>
+
+          <div className="flex items-baseline gap-4 text-xs">
+            <span className="text-white/40">
+              {online ? 'данные из Postgres через API' : 'нет соединения с API'}
+            </span>
+            <Link href="/games" className="text-gold-300 hover:underline">
+              Весь каталог →
+            </Link>
+          </div>
         </div>
 
         {online && games.length > 0 && (
@@ -122,10 +128,9 @@ export default async function LobbyPage() {
               .
             </li>
             <li>
-              <span className="font-medium text-white/85">
-                Дальше — каталог, честность, realtime.
-              </span>{' '}
-              Регистрация игр и модерация, страница верификации раундов, чат, лента выигрышей.
+              <span className="font-medium text-white/85">Каталог и заявки.</span> Фильтры по
+              категориям и студиям, страница студии, публикация чужих игр через форму и модерация.
+              Дальше — проверяемый рандом, чат и лента выигрышей.
             </li>
           </ol>
         </div>

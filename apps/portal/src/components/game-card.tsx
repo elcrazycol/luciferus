@@ -1,40 +1,33 @@
-import { currency } from '@luciferus/config/currency'
+import { formatAmount } from '@luciferus/config/currency'
+import {
+  GAME_CATEGORY_LABELS,
+  GAME_VOLATILITY_LABELS,
+  type GameCard,
+} from '@luciferus/protocol/game'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import type { GameCard } from '@/lib/api'
 
-export const CATEGORY_LABELS: Record<string, string> = {
-  slots: 'Слоты',
-  classic: 'Классика',
-  crash: 'Краш',
-  table: 'Столы',
-  cards: 'Карты',
-  multiplayer: 'Мультиплеер',
-  live: 'Лайв',
+function Badge({ children, tone = 'muted' }: { children: ReactNode; tone?: 'muted' | 'gold' }) {
+  const styles =
+    tone === 'gold'
+      ? 'border-gold-500/30 bg-gold-500/10 text-gold-300'
+      : 'border-white/10 bg-white/5 text-white/60'
+
+  return <span className={`rounded-full border px-2 py-0.5 text-[11px] ${styles}`}>{children}</span>
 }
 
-const VOLATILITY_LABELS: Record<string, string> = {
-  low: 'низкая волатильность',
-  medium: 'средняя волатильность',
-  high: 'высокая волатильность',
-}
-
-function Badge({ children }: { children: ReactNode }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
-      {children}
+    <span className="text-[11px] text-white/40">
+      {label} <b className="text-white/65">{value}</b>
     </span>
   )
 }
 
 export function GameCardTile({ game }: { game: GameCard }) {
   const initial = game.title.slice(0, 1).toUpperCase()
-  const rtpPercent = game.rtp ? `${(Number.parseFloat(game.rtp) * 100).toFixed(2)}% RTP` : null
-  const volatility = game.volatility ? VOLATILITY_LABELS[game.volatility] : null
-
-  // Игра без объявленного origin запущена быть не может: порталу некуда адресовать
-  // приветствие. Показываем это честно, а не кнопкой, которая ведёт в ошибку.
-  const launchable = game.allowedOrigins.length > 0
+  const rtpPercent = game.rtp ? `${(Number.parseFloat(game.rtp) * 100).toFixed(2)}%` : null
+  const biggestWin = Number.parseFloat(game.stats.biggestWin ?? '0')
 
   return (
     <article className="card-gold flex flex-col overflow-hidden rounded-2xl bg-ink-900/70">
@@ -55,44 +48,53 @@ export function GameCardTile({ game }: { game: GameCard }) {
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div>
           <h3 className="text-base font-semibold text-white">{game.title}</h3>
-          <p className="text-xs text-white/45">
-            {game.providerName ?? 'Без провайдера'}
-            {game.providerVerified ? ' · проверен' : ''}
-          </p>
+          {game.providerSlug ? (
+            <Link
+              href={`/providers/${game.providerSlug}`}
+              className="text-xs text-white/45 hover:text-gold-300"
+            >
+              {game.providerName}
+              {game.providerVerified ? ' · проверен' : ''}
+            </Link>
+          ) : (
+            <p className="text-xs text-white/45">Без студии</p>
+          )}
         </div>
 
         <p className="line-clamp-2 text-sm text-white/60">{game.description}</p>
 
         <div className="flex flex-wrap gap-1.5">
           {game.categories.map((category) => (
-            <Badge key={category}>{CATEGORY_LABELS[category] ?? category}</Badge>
+            <Badge key={category}>
+              {GAME_CATEGORY_LABELS[category as keyof typeof GAME_CATEGORY_LABELS] ?? category}
+            </Badge>
           ))}
-          {rtpPercent && <Badge>{rtpPercent}</Badge>}
-          {volatility && <Badge>{volatility}</Badge>}
+          {rtpPercent && <Badge tone="gold">RTP {rtpPercent}</Badge>}
+          {game.volatility && (
+            <Badge>
+              {GAME_VOLATILITY_LABELS[game.volatility as keyof typeof GAME_VOLATILITY_LABELS] ??
+                game.volatility}
+            </Badge>
+          )}
         </div>
 
-        <div className="mt-auto flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-white/40">
-          <span>
-            ставка от {currency.symbol}
-            {game.limits.minBet}
-          </span>
-          <span>
-            макс. выигрыш {currency.symbol}
-            {game.limits.maxWin}
-          </span>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <Stat label="ставок:" value={String(game.stats.plays)} />
+          <Stat label="мин. ставка:" value={formatAmount(game.limits.minBet)} />
+          {biggestWin > 0 && <Stat label="макс. выигрыш:" value={formatAmount(biggestWin)} />}
         </div>
 
-        {launchable ? (
+        {game.launchable ? (
           <Link
             href={`/game/${game.slug}`}
-            className="w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-3 py-2 text-center text-sm font-semibold text-gold-300 transition-colors hover:bg-gold-500/25"
+            className="mt-auto w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-3 py-2 text-center text-sm font-semibold text-gold-300 transition-colors hover:bg-gold-500/25"
           >
             Играть
           </Link>
         ) : (
           <span
             title="Игра не объявила свой origin — портал не сможет её запустить"
-            className="w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-medium text-white/35"
+            className="mt-auto w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-medium text-white/35"
           >
             Не подключена
           </span>

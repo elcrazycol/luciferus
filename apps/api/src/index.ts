@@ -12,9 +12,11 @@ import { logger } from 'hono/logger'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { AppError } from './lib/errors'
 import { pingRedis } from './lib/redis'
+import { adminRoutes } from './routes/admin'
 import { authRoutes } from './routes/auth'
 import { gameRoutes } from './routes/game'
 import { gamesRoutes } from './routes/games'
+import { providerRoutes } from './routes/providers'
 import { walletRoutes } from './routes/wallet'
 
 const VERSION = '0.3.0'
@@ -47,7 +49,15 @@ const portalCors = cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 })
 
-for (const path of ['/v1/auth/*', '/v1/wallet/*', '/v1/games', '/v1/games/*', '/v1/config']) {
+for (const path of [
+  '/v1/auth/*',
+  '/v1/wallet/*',
+  '/v1/games',
+  '/v1/games/*',
+  '/v1/providers/*',
+  '/v1/admin/*',
+  '/v1/config',
+]) {
   app.use(path, portalCors)
 }
 
@@ -106,8 +116,10 @@ app.get('/v1/config', (c) =>
 // ─── Каталог игр, аккаунты, кошелёк, игры ────────────────────────────────────────
 
 app.route('/v1/games', gamesRoutes)
+app.route('/v1/providers', providerRoutes)
 app.route('/v1/auth', authRoutes)
 app.route('/v1/wallet', walletRoutes)
+app.route('/v1/admin', adminRoutes)
 
 // Игровые маршруты живут отдельно от портальных: у них другая авторизация
 // (игровой токен вместо сессии) и другой CORS.

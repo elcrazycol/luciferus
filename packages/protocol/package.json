@@ -8,6 +8,7 @@
     "./auth": "./src/auth.ts",
     "./embed": "./src/embed.ts",
     "./embed-constants": "./src/embed-constants.ts",
+    "./game": "./src/game.ts",
     "./wallet": "./src/wallet.ts",
     "./errors": "./src/errors.ts",
     "./money": "./src/money.ts"

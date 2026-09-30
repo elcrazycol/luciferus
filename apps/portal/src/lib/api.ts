@@ -5,6 +5,16 @@ import type {
   RegisterRequest,
 } from '@luciferus/protocol/auth'
 import type { GameLaunch } from '@luciferus/protocol/embed'
+import type {
+  GameCard,
+  GameListQuery,
+  GameListResponse,
+  GameStatus,
+  GameSubmission,
+  GameUpdate,
+  OwnGameCard,
+  ProviderProfile,
+} from '@luciferus/protocol/game'
 import type { LedgerPage, WalletOperationResult, WalletOverview } from '@luciferus/protocol/wallet'
 
 /**
@@ -30,7 +40,7 @@ export class ApiRequestError extends Error {
 }
 
 type ApiFetchOptions = {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'PATCH'
   token?: string | null
   body?: unknown
   timeoutMs?: number
@@ -126,27 +136,7 @@ export function launchGame(token: string, slug: string): Promise<GameLaunch> {
   return apiFetch<GameLaunch>(`/v1/games/${encodeURIComponent(slug)}/launch`, { token })
 }
 
-// ─── Каталог игр ─────────────────────────────────────────────────────────────────
-
-export type GameCard = {
-  slug: string
-  title: string
-  description: string
-  categories: string[]
-  tags: string[]
-  volatility: string | null
-  rtp: string | null
-  fairMode: 'client' | 'provably-fair'
-  limits: { minBet: number; maxBet: number; maxWin: number }
-  thumbnailUrl: string | null
-  embedUrl: string
-  /** Объявленные игрой origin'ы. Пусто — портал не сможет её запустить. */
-  allowedOrigins: string[]
-  isStub: boolean
-  providerSlug: string | null
-  providerName: string | null
-  providerVerified: boolean | null
-}
+// ─── Каталог, заявки, модерация ──────────────────────────────────────────────────
 
 export type LobbyResult = {
   games: GameCard[]
@@ -161,7 +151,7 @@ export type LobbyResult = {
  */
 export async function fetchLobby(): Promise<LobbyResult> {
   try {
-    const response = await fetch(`${API_URL}/v1/games`, {
+    const response = await fetch(`${API_URL}/v1/games?limit=8&sort=plays`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(2500),
     })
@@ -173,4 +163,93 @@ export async function fetchLobby(): Promise<LobbyResult> {
   } catch {
     return { games: [], online: false }
   }
+}
+
+/** Собирает query-строку каталога, выбрасывая пустые параметры. */
+export function buildCatalogQuery(query: Partial<GameListQuery>): string {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') continue
+    params.set(key, String(value))
+  }
+
+  return params.toString()
+}
+
+export function listGames(query: Partial<GameListQuery> = {}): Promise<GameListResponse> {
+  const search = buildCatalogQuery(query)
+  return apiFetch<GameListResponse>(`/v1/games${search ? `?${search}` : ''}`)
+}
+
+export function getGame(slug: string): Promise<{ game: GameCard }> {
+  return apiFetch<{ game: GameCard }>(`/v1/games/${encodeURIComponent(slug)}`)
+}
+
+export function getProvider(slug: string): Promise<{ provider: ProviderProfile }> {
+  return apiFetch<{ provider: ProviderProfile }>(`/v1/providers/${encodeURIComponent(slug)}`)
+}
+
+export function submitGame(token: string, body: GameSubmission): Promise<{ game: OwnGameCard }> {
+  return apiFetch('/v1/games', { method: 'POST', token, body })
+}
+
+export function patchGame(
+  token: string,
+  slug: string,
+  body: GameUpdate,
+): Promise<{ game: OwnGameCard }> {
+  return apiFetch(`/v1/games/${encodeURIComponent(slug)}`, { method: 'PATCH', token, body })
+}
+
+export function getMyGames(token: string): Promise<{ games: OwnGameCard[]; total: number }> {
+  return apiFetch('/v1/games/mine', { token })
+}
+
+// ─── Админка ─────────────────────────────────────────────────────────────────────
+
+export type AdminOverview = {
+  games: { pending: number; live: number; disabled: number; drafts: number }
+}
+
+export type ModerationEntry = OwnGameCard & {
+  authorUsername: string | null
+  authorDisplayName: string | null
+}
+
+export function getAdminOverview(token: string): Promise<AdminOverview> {
+  return apiFetch<AdminOverview>('/v1/admin/overview', { token })
+}
+
+export function getModerationQueue(
+  token: string,
+  status: GameStatus,
+): Promise<{ games: ModerationEntry[]; total: number; status: string }> {
+  return apiFetch(`/v1/admin/games?status=${status}`, { token })
+}
+
+export function moderateGame(
+  token: string,
+  slug: string,
+  decision: 'approve' | 'reject' | 'disable',
+  note?: string,
+): Promise<{ game: OwnGameCard }> {
+  return apiFetch(`/v1/admin/games/${encodeURIComponent(slug)}/moderate`, {
+    method: 'POST',
+    token,
+    body: { decision, ...(note ? { note } : {}) },
+  })
+}
+
+export function adjustUserBalance(
+  token: string,
+  userId: string,
+  amount: number,
+  note: string,
+): Promise<WalletOperationResult> {
+  return apiFetch(`/v1/admin/users/${encodeURIComponent(userId)}/balance`, {
+    method: 'POST',
+    token,
+    body: { amount, note },
+  })
 }

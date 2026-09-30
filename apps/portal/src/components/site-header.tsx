@@ -6,6 +6,7 @@ import { getSessionToken } from '@/lib/session'
 
 const NAV_LINKS = [
   { href: '/', label: 'Лобби' },
+  { href: '/games', label: 'Каталог' },
   { href: '/wallet', label: 'Кошелёк' },
   { href: '/developers', label: 'Разработчикам' },
 ] as const
@@ -37,6 +38,15 @@ export async function SiteHeader() {
               {item.label}
             </Link>
           ))}
+
+          {me?.user.role === 'admin' && (
+            <Link
+              href="/admin"
+              className="rounded-lg border border-gold-500/30 px-3 py-1.5 text-sm text-gold-300 transition-colors hover:bg-gold-500/10"
+            >
+              Модерация
+            </Link>
+          )}
 
           {COMING_SOON.map((label) => (
             <span

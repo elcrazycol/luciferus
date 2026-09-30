@@ -103,6 +103,9 @@ export const ledger = pgTable(
     uniqueIndex('ledger_idempotency_key_uq').on(t.idempotencyKey),
     index('ledger_user_created_idx').on(t.userId, t.createdAt),
     index('ledger_round_idx').on(t.roundId),
+    // Статистика игр считается агрегатом по леджеру, поэтому выборка по игре
+    // должна быть индексной, а не сканированием всего журнала.
+    index('ledger_game_idx').on(t.gameId),
   ],
 )
 
@@ -174,6 +177,10 @@ export const games = pgTable(
     submittedBy: uuid('submitted_by').references(() => users.id, { onDelete: 'set null' }),
     /** Игра из сидов (заглушка), а не от реального автора. */
     isStub: boolean('is_stub').notNull().default(false),
+    /** Что модератор написал автору при отклонении или отключении. */
+    moderationNote: text('moderation_note'),
+    /** Когда игра последний раз меняла статус — для очереди модерации. */
+    statusChangedAt: timestamp('status_changed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -181,6 +188,9 @@ export const games = pgTable(
     uniqueIndex('games_slug_uq').on(t.slug),
     index('games_status_idx').on(t.status),
     index('games_provider_idx').on(t.providerId),
+    index('games_status_changed_idx').on(t.status, t.statusChangedAt),
+    // Фильтр каталога по категориям идёт через `arrayContains` — это GIN-операция.
+    index('games_categories_idx').using('gin', t.categories),
   ],
 )
 
