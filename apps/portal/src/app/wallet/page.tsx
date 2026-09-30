@@ -112,7 +112,7 @@ export default async function WalletPage({
       </p>
 
       <div className="mt-7 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="card-gold rounded-2xl bg-ink-900/70 p-6 lg:col-span-2">
+        <div className="glass rounded-2xl bg-ink-900/70 p-6 lg:col-span-2">
           <p className="text-[11px] tracking-wider text-white/40 uppercase">Текущий баланс</p>
           <p className="text-gold-gradient mt-1 text-4xl font-black tabular-nums">
             {formatAmount(wallet.balance)}
@@ -133,7 +133,7 @@ export default async function WalletPage({
           </div>
         </div>
 
-        <div className="card-gold flex flex-col justify-between rounded-2xl bg-ink-900/70 p-6">
+        <div className="glass flex flex-col justify-between rounded-2xl bg-ink-900/70 p-6">
           <div>
             <p className="text-[11px] tracking-wider text-white/40 uppercase">Дозаправка</p>
             <p className="text-gold-gradient mt-1 text-2xl font-bold">

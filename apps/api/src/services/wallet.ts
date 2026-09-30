@@ -12,6 +12,7 @@ import type {
 } from '@luciferus/protocol/wallet'
 import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import { AppError } from '../lib/errors'
+import { publishBalance } from '../lib/events'
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type LedgerRow = typeof ledger.$inferSelect
@@ -40,6 +41,25 @@ async function lockWallet(tx: Transaction, userId: string): Promise<WalletRow> {
 function gameSlugOf(row: LedgerRow): string | null {
   const slug = row.meta?.gameSlug
   return typeof slug === 'string' ? slug : null
+}
+
+/**
+ * Сообщает подписчикам, что баланс изменился.
+ *
+ * Вызывается ПОСЛЕ завершения транзакции: опубликуй мы событие внутри, подписчик
+ * успел бы прочитать ещё не закоммиченный баланс и показал бы неверное число.
+ */
+async function announce(
+  userId: string,
+  result: WalletOperationResult,
+  reason: string,
+): Promise<void> {
+  await publishBalance(userId, {
+    balance: result.balance,
+    delta: result.entry.amount,
+    reason,
+    at: new Date().toISOString(),
+  })
 }
 
 function toEntryDto(row: LedgerRow): LedgerEntryDto {
@@ -225,7 +245,7 @@ export async function placeBet(input: MutationInput): Promise<WalletOperationRes
     })
   }
 
-  return applyEntry({
+  const result = await applyEntry({
     userId: input.userId,
     type: 'bet',
     amount: negateDecimal(toDecimal(input.amount)),
@@ -236,6 +256,9 @@ export async function placeBet(input: MutationInput): Promise<WalletOperationRes
     meta: { ...input.meta, gameSlug: input.gameSlug ?? null },
     requireFunds: true,
   })
+
+  await announce(input.userId, result, 'bet')
+  return result
 }
 
 export async function payOut(input: MutationInput): Promise<WalletOperationResult> {
@@ -247,7 +270,7 @@ export async function payOut(input: MutationInput): Promise<WalletOperationResul
     })
   }
 
-  return applyEntry({
+  const result = await applyEntry({
     userId: input.userId,
     type: 'payout',
     idempotencyKey:
@@ -274,6 +297,9 @@ export async function payOut(input: MutationInput): Promise<WalletOperationResul
       return toDecimal(input.amount)
     },
   })
+
+  await announce(input.userId, result, 'payout')
+  return result
 }
 
 export type RollbackInput = {
@@ -288,7 +314,7 @@ export type RollbackInput = {
 export async function rollbackRound(input: RollbackInput): Promise<WalletOperationResult> {
   const { gameId } = await resolveLimits(input.gameSlug)
 
-  return applyEntry({
+  const result = await applyEntry({
     userId: input.userId,
     type: 'rollback',
     idempotencyKey:
@@ -314,6 +340,9 @@ export async function rollbackRound(input: RollbackInput): Promise<WalletOperati
       return negateDecimal(state.bet.amount)
     },
   })
+
+  await announce(input.userId, result, 'rollback')
+  return result
 }
 
 // ─── Чтение ──────────────────────────────────────────────────────────────────────
@@ -390,7 +419,7 @@ export async function getLedger(
   const cooldownMs = serverConfig.reloadCooldownMinutes * 60_000
   const threshold = economy.reloadThreshold
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const wallet = await lockWallet(tx, userId)
     const now = Date.now()
 
@@ -440,6 +469,9 @@ export async function getLedger(
       nextAvailableAt: nextAvailableAt.toISOString(),
     }
   })
+
+  await announce(userId, result, 'reload_bonus')
+  return result
 }
 
 // ─── Административные операции ───────────────────────────────────────────────────
@@ -468,7 +500,7 @@ export async function adjustBalance(input: AdminAdjustment): Promise<WalletOpera
   const amount = toDecimal(Math.abs(input.amount))
   const signed = input.amount > 0 ? amount : negateDecimal(amount)
 
-  return applyEntry({
+  const result = await applyEntry({
     userId: input.userId,
     type: 'admin_adjust',
     amount: signed,
@@ -478,4 +510,7 @@ export async function adjustBalance(input: AdminAdjustment): Promise<WalletOpera
     // Списывать больше, чем есть, нельзя даже админу: баланс не уходит в минус.
     requireFunds: input.amount < 0,
   })
+
+  await announce(input.userId, result, 'admin_adjust')
+  return result
 }

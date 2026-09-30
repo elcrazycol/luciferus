@@ -33,10 +33,10 @@ function OfflineNotice() {
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="card-gold rounded-2xl bg-ink-900/60 p-4">
-      <p className="text-[11px] tracking-wider text-white/40 uppercase">{label}</p>
-      <p className="text-gold-gradient mt-1 text-2xl font-bold">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-white/40">{hint}</p>}
+    <div className="glass p-4">
+      <p className="text-[10px] tracking-wider text-white/35 uppercase">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-white">{value}</p>
+      {hint && <p className="mt-0.5 text-[11px] text-white/35">{hint}</p>}
     </div>
   )
 }
@@ -48,34 +48,32 @@ export default async function LobbyPage() {
   return (
     <main className="mx-auto w-full max-w-7xl px-4 pt-10 pb-24 sm:px-6 lg:px-8">
       <section>
-        <h1 className="max-w-3xl text-3xl font-bold text-white sm:text-4xl">
-          Казино, где проиграть нельзя. Потому что играть{' '}
-          <span className="text-gold-gradient">не на что</span>.
+        <h1 className="max-w-2xl text-3xl font-semibold text-white sm:text-4xl">
+          Казино, где проиграть нельзя — играть не на что.
         </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">
-          Платформа для чужих игр: принеси свой слот, краш или настолку, подключи одной строкой кода
-          — портал даст тебе баланс игрока, ставки, выплаты, чат и проверяемый рандом. Баланс
-          фейковый, вайб настоящий.
+        <p className="mt-3 max-w-xl text-sm leading-6 text-white/50">
+          Платформа для чужих игр. Принеси свой слот, краш или настолку, подключи одной строкой —
+          портал даст баланс, ставки, выплаты и проверяемый рандом.
         </p>
       </section>
 
-      <section className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="стартовый бонус"
           value={formatAmount(economy.signupBonus)}
-          hint="каждому новому аккаунту"
+          hint="новому аккаунту"
         />
         <StatCard
           label="дозаправка"
           value={formatAmount(economy.reloadBonus)}
-          hint={`раз в ${economy.reloadCooldownMinutes} минут, если всё слил`}
+          hint={`раз в ${economy.reloadCooldownMinutes} мин`}
         />
         <StatCard
-          label="игр в каталоге"
+          label="игр"
           value={online ? String(games.length) : '—'}
-          hint={online ? `от ${providerCount} провайдеров` : 'API недоступен'}
+          hint={online ? `от ${providerCount} студий` : 'API недоступен'}
         />
-        <StatCard label="реальные деньги" value="C$0" hint="и так и останется" />
+        <StatCard label="реальные деньги" value="C$0" hint="и так останется" />
       </section>
 
       <section className="mt-10">
@@ -111,7 +109,7 @@ export default async function LobbyPage() {
       </section>
 
       <section className="mt-14 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="card-gold rounded-2xl bg-ink-900/60 p-5 lg:col-span-2">
+        <div className="glass rounded-2xl bg-ink-900/60 p-5 lg:col-span-2">
           <h2 className="text-lg font-semibold text-white">Что уже работает</h2>
           <ol className="mt-4 space-y-3 text-sm text-white/60">
             <li>
@@ -135,7 +133,7 @@ export default async function LobbyPage() {
           </ol>
         </div>
 
-        <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
+        <div className="glass rounded-2xl bg-ink-900/60 p-5">
           <h2 className="text-lg font-semibold text-white">Хочешь свою игру?</h2>
           <p className="mt-2 text-sm text-white/60">
             Игра хостится у тебя, портал грузит её в iframe и общается через postMessage. Любой

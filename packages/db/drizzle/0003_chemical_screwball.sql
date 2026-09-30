@@ -1,0 +1,2 @@
+DROP INDEX "ledger_fair_nonce_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "ledger_fair_round_uq" ON "ledger" USING btree ("user_id","game_id",(meta -> 'fair' ->> 'pairId'),(meta -> 'fair' ->> 'nonce')) WHERE meta ? 'fair';

@@ -42,7 +42,7 @@ function GameSidebar({ game }: { game: GameCard }) {
 
   return (
     <aside className="space-y-4">
-      <section className="card-gold rounded-2xl bg-ink-900/60 p-5">
+      <section className="glass rounded-2xl bg-ink-900/60 p-5">
         <h2 className="text-sm font-semibold text-white">Об игре</h2>
 
         {game.description && (
@@ -73,7 +73,7 @@ function GameSidebar({ game }: { game: GameCard }) {
         )}
       </section>
 
-      <section className="card-gold rounded-2xl bg-ink-900/60 p-5">
+      <section className="glass rounded-2xl bg-ink-900/60 p-5">
         <h2 className="text-sm font-semibold text-white">Лимиты</h2>
 
         <dl className="mt-3">
@@ -87,7 +87,7 @@ function GameSidebar({ game }: { game: GameCard }) {
         </p>
       </section>
 
-      <section className="card-gold rounded-2xl bg-ink-900/60 p-5">
+      <section className="glass rounded-2xl bg-ink-900/60 p-5">
         <h2 className="text-sm font-semibold text-white">Статистика</h2>
 
         <dl className="mt-3">
@@ -115,7 +115,7 @@ function GameSidebar({ game }: { game: GameCard }) {
       </section>
 
       {game.tags.length > 0 && (
-        <section className="card-gold rounded-2xl bg-ink-900/60 p-5">
+        <section className="glass rounded-2xl bg-ink-900/60 p-5">
           <h2 className="text-sm font-semibold text-white">Метки</h2>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {game.categories.map((category) => (

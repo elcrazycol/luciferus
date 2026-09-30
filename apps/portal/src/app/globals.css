@@ -1,19 +1,20 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-ink-950: #06040f;
-  --color-ink-900: #0b0819;
-  --color-ink-850: #100c22;
-  --color-ink-800: #16112c;
-  --color-ink-700: #221a42;
+  --color-ink-950: #06060b;
+  --color-ink-900: #0a0a12;
+  --color-ink-850: #0e0e18;
+  --color-ink-800: #13131f;
 
   --color-gold-300: #ffe08a;
   --color-gold-400: #ffce5c;
   --color-gold-500: #f0ad2b;
 
-  --color-ember-500: #ff4d6d;
+  --color-ember-500: #ff5c7a;
   --color-plasma-500: #8b5cf6;
-  --color-mint-500: #34d399;
+  --color-mint-500: #4ade9f;
+
+  --radius-glass: 1.25rem;
 }
 
 @layer base {
@@ -23,63 +24,66 @@
 
   body {
     background-color: var(--color-ink-950);
-    color: rgb(255 255 255 / 0.88);
+    color: rgb(255 255 255 / 0.86);
     -webkit-font-smoothing: antialiased;
     font-family:
       ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
       'Noto Sans', sans-serif;
   }
+
+  /* Мягкий фон: матовому стеклу нужно, что размывать. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(45rem 30rem at 12% -10%, rgb(139 92 246 / 0.14), transparent 65%),
+      radial-gradient(40rem 28rem at 95% 8%, rgb(240 173 43 / 0.1), transparent 60%),
+      radial-gradient(50rem 40rem at 50% 120%, rgb(74 222 159 / 0.06), transparent 65%);
+  }
 }
 
 @layer components {
-  /* Золотой градиентный текст для логотипа и заголовков. */
+  /**
+   * Основа интерфейса — матовое стекло.
+   *
+   * Одна поверхность на всё: панели, карточки, списки. Разные оттенки и толщина
+   * рамки создают иерархию без второго десятка классов.
+   */
+  .glass {
+    border: 1px solid rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.04);
+    backdrop-filter: blur(18px) saturate(150%);
+    border-radius: var(--radius-glass);
+  }
+
+  /* Поверхность, лежащая на другой: чуть плотнее и заметнее. */
+  .glass-raised {
+    border: 1px solid rgb(255 255 255 / 0.1);
+    background: rgb(255 255 255 / 0.06);
+    backdrop-filter: blur(24px) saturate(160%);
+    border-radius: var(--radius-glass);
+    box-shadow: 0 24px 60px -40px rgb(0 0 0 / 0.9);
+  }
+
+  .glass-hover {
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease;
+  }
+
+  .glass-hover:hover {
+    background: rgb(255 255 255 / 0.07);
+    border-color: rgb(255 255 255 / 0.16);
+  }
+
+  /* Золото только на логотипе: акцент должен быть один. */
   .text-gold-gradient {
-    background-image: linear-gradient(100deg, #ffe08a 0%, #ffce5c 35%, #f0ad2b 65%, #b0761a 100%);
+    background-image: linear-gradient(100deg, #ffe08a 0%, #ffce5c 45%, #e0a02a 100%);
     background-clip: text;
     -webkit-background-clip: text;
     color: transparent;
-  }
-
-  /* Тонкая золотая рамка с подсветкой изнутри. */
-  .card-gold {
-    border: 1px solid rgb(255 206 92 / 0.14);
-    background-image: linear-gradient(160deg, rgb(255 206 92 / 0.07), transparent 55%);
-    transition:
-      border-color 150ms ease,
-      transform 150ms ease,
-      box-shadow 150ms ease;
-  }
-
-  .card-gold:hover {
-    border-color: rgb(255 206 92 / 0.4);
-    transform: translateY(-2px);
-    box-shadow: 0 18px 40px -24px rgb(240 173 43 / 0.55);
-  }
-
-  /* Фоновая подсветка «казино»: два размытых пятна. */
-  .ambient-glow::before,
-  .ambient-glow::after {
-    content: '';
-    position: fixed;
-    z-index: -1;
-    border-radius: 9999px;
-    filter: blur(120px);
-    pointer-events: none;
-  }
-
-  .ambient-glow::before {
-    top: -12rem;
-    left: -8rem;
-    width: 34rem;
-    height: 34rem;
-    background: rgb(139 92 246 / 0.16);
-  }
-
-  .ambient-glow::after {
-    top: 18rem;
-    right: -10rem;
-    width: 30rem;
-    height: 30rem;
-    background: rgb(240 173 43 / 0.1);
   }
 }

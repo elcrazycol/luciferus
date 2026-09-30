@@ -1,13 +1,16 @@
 'use client'
 
 import { verifyRound } from '@luciferus/fairness'
-import { useActionState, useState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { FormError, FormSuccess } from '@/components/form-field'
 import { rotateSeedsAction, type SeedsFormState, setClientSeedAction } from '@/lib/fairness-actions'
 
 const INITIAL: SeedsFormState = {}
 
-type Prefill = {
+const FIELD =
+  'w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-gold-500/50'
+
+export type VerifierPrefill = {
   serverSeed?: string
   serverSeedHash?: string
   clientSeed?: string
@@ -15,189 +18,269 @@ type Prefill = {
   random?: string
 }
 
-const FIELD_CLASS =
-  'w-full rounded-lg border border-white/10 bg-ink-950/80 px-3 py-2 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-gold-500/60'
+type Verdict = {
+  seedMatchesCommit: boolean
+  randomMatches: boolean
+  computedRandom: string
+}
+
+async function compute(prefill: VerifierPrefill): Promise<Verdict | { error: string }> {
+  const nonce = prefill.nonce ?? 0
+
+  if (!prefill.serverSeed) return { error: 'Нет раскрытого серверного сида' }
+  if (!/^[0-9a-f]{64}$/i.test(prefill.serverSeedHash ?? '')) return { error: 'Хэш сида неверен' }
+  if (!/^[0-9a-f]{64}$/i.test(prefill.random ?? '')) return { error: 'Случайность раунда неверна' }
+  if (!Number.isInteger(nonce) || nonce < 1) return { error: 'Номер раунда неверен' }
+
+  return verifyRound({
+    serverSeed: prefill.serverSeed,
+    serverSeedHash: prefill.serverSeedHash ?? '',
+    clientSeed: prefill.clientSeed ?? '',
+    nonce,
+    claimedRandom: prefill.random ?? '',
+  })
+}
+
+function VerdictCard({ verdict }: { verdict: Verdict }) {
+  const honest = verdict.seedMatchesCommit && verdict.randomMatches
+
+  return (
+    <div className={`glass px-4 py-3 text-sm ${honest ? 'text-mint-500' : 'text-ember-500'}`}>
+      <p className="font-semibold">{honest ? 'Раунд честный' : 'Раунд не сходится'}</p>
+
+      <ul className="mt-2 space-y-1 text-xs text-white/55">
+        <li>
+          {verdict.seedMatchesCommit ? '✓' : '✗'} хэш раскрытого сида совпадает с опубликованным
+        </li>
+        <li>{verdict.randomMatches ? '✓' : '✗'} случайность совпадает с пересчитанной</li>
+      </ul>
+
+      {!verdict.randomMatches && (
+        <p className="mt-2 font-mono text-[11px] break-all text-white/40">
+          Получилось: {verdict.computedRandom}
+        </p>
+      )}
+    </div>
+  )
+}
 
 /**
- * Проверка раунда прямо в браузере.
+ * Проверка раунда.
  *
- * Ключевое: расчёт идёт здесь, а не на сервере. Игрок вводит три значения и
- * получает результат, не доверяя порталу ни на шаг — в этом и смысл проверяемой
- * честности. Если бы проверку считал сервер, он мог бы соврать и в ней.
+ * Считается в браузере, а не на сервере: иначе портал мог бы соврать и в проверке,
+ * и весь смысл проверяемой честности пропал бы.
+ *
+ * Если данные пришли из журнала, проверка выполняется сразу — игроку не нужно
+ * нажимать кнопку, чтобы увидеть вердикт. Ручной ввод нужен только для чужих
+ * раундов и спрятан, пока не понадобится.
  */
-export function RoundVerifier({ prefill }: { prefill?: Prefill }) {
-  const [values, setValues] = useState({
-    serverSeed: prefill?.serverSeed ?? '',
-    serverSeedHash: prefill?.serverSeedHash ?? '',
-    clientSeed: prefill?.clientSeed ?? '',
-    nonce: prefill?.nonce ? String(prefill.nonce) : '',
-    random: prefill?.random ?? '',
-  })
+export function RoundVerifier({ prefill }: { prefill?: VerifierPrefill }) {
+  const prefillKey = prefill ? JSON.stringify(prefill) : ''
 
-  const [result, setResult] = useState<{
-    seedMatchesCommit: boolean
-    randomMatches: boolean
-    computedRandom: string
-  } | null>(null)
-
+  const [verdict, setVerdict] = useState<Verdict | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [manualOpen, setManualOpen] = useState(!prefill?.serverSeed)
 
-  function update(field: keyof typeof values, value: string) {
-    setValues((current) => ({ ...current, [field]: value }))
-    setResult(null)
-    setError(null)
-  }
+  const [manual, setManual] = useState<VerifierPrefill>({})
 
-  async function check() {
-    const nonce = Number.parseInt(values.nonce, 10)
+  // Автопроверка при открытии страницы с готовыми данными.
+  useEffect(() => {
+    if (!prefillKey) return
 
-    if (!values.serverSeed.trim()) return setError('Введите серверный сид')
-    if (!/^[0-9a-f]{64}$/i.test(values.serverSeedHash.trim())) {
-      return setError('Хэш сида — ровно 64 hex-символа')
-    }
-    if (!/^[0-9a-f]{64}$/i.test(values.random.trim())) {
-      return setError('Случайность раунда — ровно 64 hex-символа')
-    }
-    if (!Number.isInteger(nonce) || nonce < 1) return setError('Номер раунда — целое число от 1')
-
+    let cancelled = false
     setBusy(true)
     setError(null)
 
-    try {
-      const verification = await verifyRound({
-        serverSeed: values.serverSeed.trim(),
-        serverSeedHash: values.serverSeedHash.trim(),
-        clientSeed: values.clientSeed,
-        nonce,
-        claimedRandom: values.random.trim(),
-      })
+    void (async () => {
+      const outcome = await compute(JSON.parse(prefillKey) as VerifierPrefill)
+      if (cancelled) return
 
-      setResult(verification)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось посчитать')
-    } finally {
+      if ('error' in outcome) setError(outcome.error)
+      else setVerdict(outcome)
+
       setBusy(false)
+    })()
+
+    return () => {
+      cancelled = true
     }
+  }, [prefillKey])
+
+  async function checkManual() {
+    setBusy(true)
+    setError(null)
+    setVerdict(null)
+
+    const outcome = await compute(manual)
+
+    if ('error' in outcome) setError(outcome.error)
+    else setVerdict(outcome)
+
+    setBusy(false)
   }
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-            Серверный сид (раскрытый)
-          </span>
-          <input
-            value={values.serverSeed}
-            onChange={(event) => update('serverSeed', event.target.value)}
-            placeholder="64 hex-символа"
-            className={FIELD_CLASS}
-          />
-        </label>
+      {busy && <p className="text-sm text-white/45">Считаем в браузере…</p>}
 
-        <label className="block">
-          <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-            Опубликованный хэш
-          </span>
-          <input
-            value={values.serverSeedHash}
-            onChange={(event) => update('serverSeedHash', event.target.value)}
-            placeholder="64 hex-символа"
-            className={FIELD_CLASS}
-          />
-        </label>
+      {error && !manualOpen && <p className="glass px-4 py-3 text-sm text-gold-300">{error}</p>}
 
-        <label className="block">
-          <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-            Клиентский сид
-          </span>
-          <input
-            value={values.clientSeed}
-            onChange={(event) => update('clientSeed', event.target.value)}
-            className={FIELD_CLASS}
-          />
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-            Номер раунда
-          </span>
-          <input
-            value={values.nonce}
-            onChange={(event) => update('nonce', event.target.value)}
-            inputMode="numeric"
-            className={FIELD_CLASS}
-          />
-        </label>
-      </div>
-
-      <label className="block">
-        <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-          Случайность раунда из журнала
-        </span>
-        <input
-          value={values.random}
-          onChange={(event) => update('random', event.target.value)}
-          placeholder="64 hex-символа"
-          className={FIELD_CLASS}
-        />
-      </label>
+      {verdict && <VerdictCard verdict={verdict} />}
 
       <button
         type="button"
-        onClick={() => void check()}
-        disabled={busy}
-        className="w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-4 py-2.5 text-sm font-semibold text-gold-300 transition-colors enabled:hover:bg-gold-500/25 disabled:opacity-60"
+        onClick={() => setManualOpen((open) => !open)}
+        className="text-xs text-white/40 transition-colors hover:text-white"
       >
-        {busy ? 'Считаем в браузере…' : 'Проверить в браузере'}
+        {manualOpen ? 'Скрыть ручную проверку' : 'Проверить чужой раунд вручную'}
       </button>
 
-      {error && (
-        <p className="rounded-xl border border-ember-500/30 bg-ember-500/10 px-4 py-2.5 text-sm text-ember-500">
-          {error}
-        </p>
-      )}
+      {manualOpen && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-white/40">Серверный сид</span>
+              <input
+                value={manual.serverSeed ?? ''}
+                onChange={(event) => setManual({ ...manual, serverSeed: event.target.value })}
+                placeholder="64 hex-символа"
+                className={FIELD}
+              />
+            </label>
 
-      {result && (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            result.seedMatchesCommit && result.randomMatches
-              ? 'border-mint-500/30 bg-mint-500/10 text-mint-500'
-              : 'border-ember-500/30 bg-ember-500/10 text-ember-500'
-          }`}
-        >
-          <p className="font-semibold">
-            {result.seedMatchesCommit && result.randomMatches
-              ? 'Раунд честный'
-              : 'Раунд не сходится'}
-          </p>
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-white/40">Опубликованный хэш</span>
+              <input
+                value={manual.serverSeedHash ?? ''}
+                onChange={(event) => setManual({ ...manual, serverSeedHash: event.target.value })}
+                placeholder="64 hex-символа"
+                className={FIELD}
+              />
+            </label>
 
-          <ul className="mt-2 space-y-1 text-xs">
-            <li>
-              {result.seedMatchesCommit ? '✓' : '✗'} хэш раскрытого сида совпадает с опубликованным
-            </li>
-            <li>{result.randomMatches ? '✓' : '✗'} случайность совпадает с пересчитанной</li>
-          </ul>
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-white/40">Клиентский сид</span>
+              <input
+                value={manual.clientSeed ?? ''}
+                onChange={(event) => setManual({ ...manual, clientSeed: event.target.value })}
+                className={FIELD}
+              />
+            </label>
 
-          {!result.randomMatches && (
-            <p className="mt-2 font-mono text-[11px] break-all">
-              Получилось: {result.computedRandom}
-            </p>
+            <label className="block">
+              <span className="mb-1 block text-[11px] text-white/40">Номер раунда</span>
+              <input
+                value={manual.nonce ?? ''}
+                onChange={(event) =>
+                  setManual({ ...manual, nonce: Number.parseInt(event.target.value, 10) || 0 })
+                }
+                inputMode="numeric"
+                className={FIELD}
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-white/40">
+              Случайность раунда из журнала
+            </span>
+            <input
+              value={manual.random ?? ''}
+              onChange={(event) => setManual({ ...manual, random: event.target.value })}
+              placeholder="64 hex-символа"
+              className={FIELD}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => void checkManual()}
+            disabled={busy}
+            className="w-full rounded-xl border border-white/12 bg-white/6 px-4 py-2.5 text-sm text-white/80 transition-colors enabled:hover:bg-white/10 disabled:opacity-50"
+          >
+            Проверить
+          </button>
+
+          {error && manualOpen && (
+            <p className="glass px-4 py-2.5 text-sm text-ember-500">{error}</p>
           )}
         </div>
       )}
 
-      <p className="text-[11px] leading-5 text-white/35">
-        Расчёт идёт целиком в вашем браузере: сервер в нём не участвует и подделать результат не
-        может. Формула —{' '}
-        <code className="text-white/55">HMAC-SHA256(серверный сид, клиентский сид : номер)</code>.
+      <p className="text-[11px] leading-5 text-white/30">
+        Считает ваш браузер. Формула:{' '}
+        <span className="font-mono">HMAC-SHA256(серверный сид, клиентский сид : номер)</span>
       </p>
     </div>
   )
 }
 
-/** Копирует данные раунда одной строкой — удобно перенести в чужую проверку. */
+/** Раскрытие текущей пары. Главное действие на странице, поэтому выглядит как главное. */
+export function RotateSeedsForm({
+  gameSlug,
+  roundsWaiting,
+}: {
+  gameSlug: string
+  roundsWaiting: number
+}) {
+  const [state, action, pending] = useActionState(rotateSeedsAction, INITIAL)
+
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="gameSlug" value={gameSlug} />
+
+      <button
+        type="submit"
+        disabled={pending}
+        className="w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-4 py-3 text-sm font-semibold text-gold-300 transition-colors enabled:hover:bg-gold-500/25 disabled:opacity-60"
+      >
+        {pending
+          ? 'Раскрываем…'
+          : roundsWaiting > 0
+            ? `Раскрыть сид и проверить ${roundsWaiting} раундов`
+            : 'Раскрыть сид и начать новую пару'}
+      </button>
+
+      <label className="block">
+        <span className="mb-1 block text-[11px] text-white/40">
+          Новый клиентский сид — необязательно
+        </span>
+        <input name="clientSeed" placeholder="оставьте пустым — сгенерируем" className={FIELD} />
+      </label>
+
+      <FormError message={state.error} />
+      <FormSuccess message={state.success} />
+    </form>
+  )
+}
+
+export function ClientSeedForm({ gameSlug, current }: { gameSlug: string; current: string }) {
+  const [state, action, pending] = useActionState(setClientSeedAction, INITIAL)
+
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="gameSlug" value={gameSlug} />
+
+      <div className="flex flex-wrap gap-2">
+        <input name="clientSeed" defaultValue={current} className={`${FIELD} flex-1`} />
+
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-xl border border-white/12 bg-white/6 px-4 py-2 text-sm text-white/75 transition-colors enabled:hover:bg-white/10 disabled:opacity-50"
+        >
+          {pending ? 'Сохраняем…' : 'Сменить'}
+        </button>
+      </div>
+
+      <FormError message={state.error} />
+      <FormSuccess message={state.success} />
+    </form>
+  )
+}
+
+/** Копирует данные раунда — удобно перенести в чужую проверку. */
 export function CopyRoundButton({ payload }: { payload: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -213,74 +296,9 @@ export function CopyRoundButton({ payload }: { payload: string }) {
           })
           .catch(() => setCopied(false))
       }}
-      className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/10"
+      className="text-[11px] text-white/35 transition-colors hover:text-white"
     >
-      {copied ? 'Скопировано' : 'Копировать'}
+      {copied ? 'скопировано' : 'копировать'}
     </button>
-  )
-}
-
-export function RotateSeedsForm({ gameSlug }: { gameSlug: string }) {
-  const [state, action, pending] = useActionState(rotateSeedsAction, INITIAL)
-
-  return (
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="gameSlug" value={gameSlug} />
-
-      <label className="block">
-        <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-          Новый клиентский сид (необязательно)
-        </span>
-        <input
-          name="clientSeed"
-          placeholder="оставьте пустым — сгенерируем"
-          className={FIELD_CLASS}
-        />
-      </label>
-
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-4 py-2.5 text-sm font-semibold text-gold-300 transition-colors enabled:hover:bg-gold-500/25 disabled:opacity-60"
-      >
-        {pending ? 'Раскрываем…' : 'Раскрыть текущий сид и начать новую пару'}
-      </button>
-
-      <p className="text-[11px] leading-5 text-white/35">
-        Раскрытие необратимо: серверный сид станет публичным навсегда — только так можно проверить
-        уже сыгранные раунды. Номер раунда начнётся заново.
-      </p>
-
-      <FormError message={state.error} />
-      <FormSuccess message={state.success} />
-    </form>
-  )
-}
-
-export function ClientSeedForm({ gameSlug, current }: { gameSlug: string; current: string }) {
-  const [state, action, pending] = useActionState(setClientSeedAction, INITIAL)
-
-  return (
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="gameSlug" value={gameSlug} />
-
-      <label className="block">
-        <span className="mb-1 block text-[11px] tracking-wider text-white/45 uppercase">
-          Клиентский сид
-        </span>
-        <input name="clientSeed" defaultValue={current} className={FIELD_CLASS} />
-      </label>
-
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/75 transition-colors enabled:hover:bg-white/10 disabled:opacity-60"
-      >
-        {pending ? 'Сохраняем…' : 'Сменить клиентский сид'}
-      </button>
-
-      <FormError message={state.error} />
-      <FormSuccess message={state.success} />
-    </form>
   )
 }

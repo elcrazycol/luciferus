@@ -92,7 +92,7 @@ export default async function MyGamesPage({
       ) : (
         <ul className="mt-8 space-y-4">
           {games.map((game) => (
-            <li key={game.slug} className="card-gold rounded-2xl bg-ink-900/60 p-5">
+            <li key={game.slug} className="glass rounded-2xl bg-ink-900/60 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="flex items-center gap-3 text-base font-semibold text-white">

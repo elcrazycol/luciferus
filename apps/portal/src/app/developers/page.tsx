@@ -27,7 +27,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="card-gold rounded-2xl bg-ink-900/60 p-5">
+    <section className="glass rounded-2xl bg-ink-900/60 p-5">
       <h2 className="flex items-center gap-3 text-base font-semibold text-white">
         {step !== undefined && (
           <span className="flex h-6 w-6 items-center justify-center rounded-full border border-gold-500/40 bg-gold-500/10 text-xs text-gold-300">

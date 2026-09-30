@@ -5,6 +5,8 @@ import {
   rollbackRequestSchema,
 } from '@luciferus/protocol/wallet'
 import { Hono } from 'hono'
+import { streamSSE } from 'hono/streaming'
+import { subscribeBalance } from '../lib/events'
 import { parseJson, parseQuery } from '../lib/http'
 import { rateLimitByUser } from '../middleware/rate-limit'
 import { type AppEnv, requireSession } from '../middleware/session'
@@ -29,6 +31,66 @@ walletRoutes.get('/', async (c) => {
   const recent = await getLedger(userId, { limit: 5 })
 
   return c.json({ wallet, recentEntries: recent.entries })
+})
+
+/**
+ * Поток изменений баланса для интерфейса.
+ *
+ * Server-Sent Events, а не WebSocket: данные идут только в одну сторону, а
+ * EventSource сам переподключается после обрыва — для «обнови цифру» этого
+ * достаточно и заметно проще.
+ *
+ * Первым сообщением уходит текущий баланс: подписчик может открыть поток в любой
+ * момент и должен сразу получить актуальное значение, а не ждать следующей ставки.
+ */
+walletRoutes.get('/stream', async (c) => {
+  const userId = c.get('session').user.id
+  const wallet = await getWalletSummary(userId)
+
+  return streamSSE(c, async (stream) => {
+    let closed = false
+
+    const send = async (event: string, data: unknown): Promise<void> => {
+      if (closed) return
+
+      try {
+        await stream.writeSSE({ event, data: JSON.stringify(data) })
+      } catch {
+        // Клиент отключился — выходим из цикла ниже.
+        closed = true
+      }
+    }
+
+    await send('balance', {
+      balance: wallet.balance,
+      delta: '0.00',
+      reason: 'initial',
+      at: new Date().toISOString(),
+    })
+
+    const unsubscribe = subscribeBalance(userId, (event) => {
+      void send('balance', event)
+    })
+
+    stream.onAbort(() => {
+      closed = true
+      unsubscribe()
+    })
+
+    // Сердцебиение: без него прокси и браузеры рвут «молчащий» поток.
+    while (!closed) {
+      try {
+        await stream.sleep(15_000)
+      } catch {
+        closed = true
+        break
+      }
+
+      await send('ping', {})
+    }
+
+    unsubscribe()
+  })
 })
 
 walletRoutes.get('/ledger', async (c) => {

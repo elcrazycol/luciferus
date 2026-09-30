@@ -607,3 +607,74 @@ describe('согласованность вывода случайности', (
     expect(first.active?.serverSeedHash).toBe(second.active?.serverSeedHash)
   })
 })
+
+describe('раскрытие сида не ломает игру', () => {
+  /**
+   * Регрессия на реальную поломку: после раскрытия сида новая пара начинает
+   * нумерацию с единицы, а уникальный индекс раньше смотрел только на номер
+   * раунда — и первый же спин после раскрытия упирался в уже сыгранные номера.
+   * Игра становилась неиграбельной до тех пор, пока номера не перерастут прошлые.
+   */
+  test('сразу после раскрытия можно играть снова', async () => {
+    const fixture = await createGameFixture({ fairMode: 'provably-fair' })
+
+    const before = await startRound(fixture.user.id, fixture.game.slug)
+    await gamePost('/v1/game/bet', fixture.gameToken, {
+      amount: 5,
+      roundId: 'r-before-reveal',
+      fair: { nonce: before.nonce, serverSeedHash: before.serverSeedHash, random: before.random },
+    })
+
+    await rotateSeedPair(fixture.user.id, fixture.game.slug)
+
+    // Новая пара: номер раунда снова первый, но он относится уже к другой паре.
+    const after = await startRound(fixture.user.id, fixture.game.slug)
+    expect(after.nonce).toBe(1)
+    expect(after.serverSeedHash).not.toBe(before.serverSeedHash)
+
+    const response = await gamePost('/v1/game/bet', fixture.gameToken, {
+      amount: 5,
+      roundId: 'r-after-reveal',
+      fair: { nonce: after.nonce, serverSeedHash: after.serverSeedHash, random: after.random },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await balanceOf(fixture.user.id)).toBe('240.00')
+  })
+
+  test('несколько раскрытий подряд не мешают играть', async () => {
+    const fixture = await createGameFixture({ fairMode: 'provably-fair' })
+
+    for (let index = 0; index < 3; index += 1) {
+      await rotateSeedPair(fixture.user.id, fixture.game.slug)
+
+      const round = await startRound(fixture.user.id, fixture.game.slug)
+      const response = await gamePost('/v1/game/bet', fixture.gameToken, {
+        amount: 5,
+        roundId: `r-cycle-${index}`,
+        fair: { nonce: round.nonce, serverSeedHash: round.serverSeedHash, random: round.random },
+      })
+
+      expect(response.status).toBe(200)
+    }
+
+    expect(await balanceOf(fixture.user.id)).toBe('235.00')
+  })
+
+  test('повтор номера внутри одной пары по-прежнему запрещён', async () => {
+    const fixture = await createGameFixture({ fairMode: 'provably-fair' })
+    const round = await startRound(fixture.user.id, fixture.game.slug)
+
+    const payload = {
+      amount: 5,
+      fair: { nonce: round.nonce, serverSeedHash: round.serverSeedHash, random: round.random },
+    }
+
+    expect(
+      (await gamePost('/v1/game/bet', fixture.gameToken, { ...payload, roundId: 'r-x' })).status,
+    ).toBe(200)
+
+    const replay = await gamePost('/v1/game/bet', fixture.gameToken, { ...payload, roundId: 'r-y' })
+    expect(replay.status).toBe(409)
+  })
+})

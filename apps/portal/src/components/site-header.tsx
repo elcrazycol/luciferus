@@ -1,20 +1,23 @@
 import { formatAmount } from '@luciferus/config/currency'
 import Link from 'next/link'
+import { BalanceChip } from '@/components/live-balance'
 import { logoutAction } from '@/lib/actions'
 import { getMe } from '@/lib/api'
 import { getSessionToken } from '@/lib/session'
 
 const NAV_LINKS = [
-  { href: '/', label: 'Лобби' },
   { href: '/games', label: 'Каталог' },
   { href: '/wallet', label: 'Кошелёк' },
   { href: '/fairness', label: 'Честность' },
   { href: '/developers', label: 'Разработчикам' },
 ] as const
 
-const COMING_SOON = ['Промо', 'Лидерборды'] as const
-
-/** Шапка серверная: баланс и имя приходят из API, а не из клиентского состояния. */
+/**
+ * Шапка серверная: имя и роль приходят из API.
+ *
+ * Баланс — единственное клиентское место: он живёт в потоке событий и меняется
+ * сразу после ставки, не дожидаясь перерисовки страницы.
+ */
 export async function SiteHeader() {
   const token = await getSessionToken()
 
@@ -22,19 +25,18 @@ export async function SiteHeader() {
   const me = token ? await getMe(token).catch(() => null) : null
 
   return (
-    <header className="sticky top-0 z-20 border-b border-white/5 bg-ink-950/80 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="text-xl">🎰</span>
-          <span className="text-gold-gradient text-lg font-black tracking-tight">LUCIFERUS</span>
+    <header className="sticky top-0 z-30 border-b border-white/5 bg-ink-950/70 backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="text-gold-gradient text-base font-black tracking-tight">LUCIFERUS</span>
         </Link>
 
-        <nav className="flex flex-wrap items-center gap-1">
+        <nav className="flex flex-wrap items-center gap-1 text-sm">
           {NAV_LINKS.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-lg px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+              className="rounded-lg px-2.5 py-1.5 text-white/55 transition-colors hover:bg-white/5 hover:text-white"
             >
               {item.label}
             </Link>
@@ -43,40 +45,26 @@ export async function SiteHeader() {
           {me?.user.role === 'admin' && (
             <Link
               href="/admin"
-              className="rounded-lg border border-gold-500/30 px-3 py-1.5 text-sm text-gold-300 transition-colors hover:bg-gold-500/10"
+              className="rounded-lg px-2.5 py-1.5 text-gold-300/80 transition-colors hover:bg-white/5 hover:text-gold-300"
             >
               Модерация
             </Link>
           )}
-
-          {COMING_SOON.map((label) => (
-            <span
-              key={label}
-              title="Появится в следующих фазах"
-              className="cursor-not-allowed rounded-lg px-3 py-1.5 text-sm text-white/25"
-            >
-              {label}
-            </span>
-          ))}
         </nav>
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {me ? (
             <>
-              <Link
-                href="/wallet"
-                title="Открыть кошелёк"
-                className="rounded-lg border border-gold-500/30 bg-gold-500/10 px-3 py-1.5 text-sm font-semibold text-gold-300 transition-colors hover:bg-gold-500/20"
-              >
-                {formatAmount(me.wallet.balance)}
+              <Link href="/wallet">
+                <BalanceChip initial={me.wallet.balance} />
               </Link>
 
-              <span className="hidden text-sm text-white/50 sm:inline">{me.user.displayName}</span>
+              <span className="hidden text-sm text-white/40 sm:inline">{me.user.displayName}</span>
 
               <form action={logoutAction}>
                 <button
                   type="submit"
-                  className="rounded-lg px-3 py-1.5 text-sm text-white/40 transition-colors hover:text-white"
+                  className="rounded-lg px-2.5 py-1.5 text-sm text-white/35 transition-colors hover:text-white"
                 >
                   Выйти
                 </button>
@@ -86,15 +74,15 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="rounded-lg px-3 py-1.5 text-sm text-white/60 transition-colors hover:text-white"
+                className="rounded-lg px-2.5 py-1.5 text-sm text-white/55 transition-colors hover:text-white"
               >
                 Войти
               </Link>
               <Link
                 href="/register"
-                className="rounded-lg border border-gold-500/40 bg-gold-500/15 px-3 py-1.5 text-sm font-semibold text-gold-300 transition-colors hover:bg-gold-500/25"
+                className="glass glass-hover px-3 py-1.5 text-sm font-medium text-gold-300"
               >
-                Забрать C$250
+                {formatAmount(250)} на старт
               </Link>
             </>
           )}

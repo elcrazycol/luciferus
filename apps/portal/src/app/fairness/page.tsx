@@ -1,4 +1,3 @@
-import { GAME_STATUS_LABELS } from '@luciferus/protocol/game'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -15,73 +14,14 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Честность игры — LuciferusCasinos',
-  description:
-    'Проверка раундов: раскрытые серверные сиды, клиентские сиды и пересчёт случайности прямо в браузере.',
+  description: 'Раскрытые сиды и пересчёт раундов прямо в браузере.',
 }
 
-function Row({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b border-white/5 py-2.5 last:border-0">
-      <p className="text-[11px] tracking-wider text-white/40 uppercase">{label}</p>
-      <p className={`mt-0.5 text-sm break-all text-white/80 ${mono ? 'font-mono text-xs' : ''}`}>
-        {value}
-      </p>
-    </div>
-  )
-}
-
-function PairCard({
-  title,
-  hash,
-  clientSeed,
-  nonce,
-  serverSeed,
-  revealedAt,
-  algorithm,
-}: {
-  title: string
-  hash: string
-  clientSeed: string
-  nonce: number
-  serverSeed?: string | null
-  revealedAt?: string | null
-  algorithm: string
-}) {
-  return (
-    <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
-        {revealedAt && (
-          <span className="rounded-full border border-mint-500/30 bg-mint-500/10 px-2 py-0.5 text-[10px] tracking-wide text-mint-500 uppercase">
-            раскрыта
-          </span>
-        )}
-      </div>
-
-      <div className="mt-2">
-        <Row label="Хэш серверного сида (коммит)" value={hash} />
-        <Row label="Клиентский сид" value={clientSeed} />
-        <Row label="Выдано раундов" value={String(nonce)} mono={false} />
-        <Row label="Алгоритм" value={algorithm} mono={false} />
-
-        {serverSeed ? (
-          <Row label="Серверный сид (раскрыт)" value={serverSeed} />
-        ) : (
-          <div className="py-2.5">
-            <p className="text-[11px] tracking-wider text-white/40 uppercase">Серверный сид</p>
-            <p className="mt-0.5 text-xs text-white/45">
-              Скрыт до раскрытия — иначе играть было бы нечестно. Нажмите «Раскрыть», чтобы увидеть
-              его и проверить сыгранные раунды.
-            </p>
-          </div>
-        )}
-
-        {revealedAt && (
-          <p className="pt-2 text-[11px] text-white/30">
-            Раскрыта {new Date(revealedAt).toLocaleString('ru-RU')}
-          </p>
-        )}
-      </div>
+    <div className="min-w-0">
+      <p className="text-[10px] tracking-wider text-white/35 uppercase">{label}</p>
+      <p className="mt-0.5 font-mono text-[11px] break-all text-white/70">{value}</p>
     </div>
   )
 }
@@ -101,9 +41,9 @@ export default async function FairnessPage({
   } catch (error) {
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-14 sm:px-6">
-        <div className="rounded-2xl border border-ember-500/25 bg-ember-500/5 p-6">
+        <div className="glass p-6">
           <h1 className="text-lg font-semibold text-white">Не удалось загрузить игры</h1>
-          <p className="mt-1 text-sm text-white/60">
+          <p className="mt-1 text-sm text-white/55">
             {error instanceof ApiRequestError ? error.message : 'API не ответил'}
           </p>
         </div>
@@ -113,14 +53,14 @@ export default async function FairnessPage({
 
   if (games.length === 0) {
     return (
-      <main className="mx-auto w-full max-w-2xl px-4 py-14 sm:px-6">
-        <h1 className="text-2xl font-bold text-white">Проверяемая честность</h1>
+      <main className="mx-auto w-full max-w-2xl px-4 py-16 sm:px-6">
+        <h1 className="text-2xl font-semibold text-white">Честность</h1>
         <p className="mt-3 text-sm leading-6 text-white/55">
           Пока ни одна игра не объявлена как проверяемая. В этом режиме портал публикует хэш
-          скрытого сида до игры, а после раскрытия показывает сам сид — и любой может пересчитать
+          скрытого сида до игры и показывает сам сид после раскрытия — тогда любой может пересчитать
           каждый раунд.
         </p>
-        <Link href="/games" className="mt-4 inline-block text-sm text-gold-300 hover:underline">
+        <Link href="/games" className="mt-5 inline-block text-sm text-gold-300 hover:underline">
           Посмотреть каталог →
         </Link>
       </main>
@@ -136,7 +76,6 @@ export default async function FairnessPage({
     getFairRounds(token, game.slug),
   ])
 
-  // Раунд, который просят проверить: данные берём из журнала, а сид — из раскрытой пары.
   const requestedRound = params.round
     ? (rounds.rounds.find((round) => round.roundId === params.round) ?? null)
     : null
@@ -144,6 +83,9 @@ export default async function FairnessPage({
   const revealedPair = requestedRound?.serverSeedHash
     ? (seeds.revealed.find((pair) => pair.serverSeedHash === requestedRound.serverSeedHash) ?? null)
     : null
+
+  const waiting = rounds.rounds.filter((round) => !round.verifiable).length
+  const verifiable = rounds.rounds.length - waiting
 
   const prefill = requestedRound
     ? {
@@ -157,206 +99,212 @@ export default async function FairnessPage({
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-bold text-white">Проверяемая честность</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-white/55">
-        Портал публикует хэш серверного сида <b className="text-white/75">до</b> игры и показывает
-        сам сид после раскрытия. Между этими двумя моментами изменить исход невозможно: подобрать
-        другой сид с тем же хэшем нельзя.
+      <h1 className="text-2xl font-semibold text-white">Честность</h1>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">
+        Портал публикует хэш серверного сида до игры и показывает сам сид после раскрытия. Между
+        этими моментами исход подменить нельзя.
       </p>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {games.map((candidate) => (
-          <Link
-            key={candidate.slug}
-            href={`/fairness?game=${candidate.slug}`}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-              candidate.slug === game.slug
-                ? 'border-gold-500/40 bg-gold-500/15 text-gold-300'
-                : 'border-white/10 bg-white/5 text-white/55 hover:text-white'
-            }`}
-          >
-            {candidate.title}
-          </Link>
-        ))}
-      </div>
+      {games.length > 1 && (
+        <div className="mt-5 flex flex-wrap gap-1.5">
+          {games.map((candidate) => (
+            <Link
+              key={candidate.slug}
+              href={`/fairness?game=${candidate.slug}`}
+              className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+                candidate.slug === game.slug
+                  ? 'bg-white/10 text-white'
+                  : 'text-white/45 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              {candidate.title}
+            </Link>
+          ))}
+        </div>
+      )}
 
-      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <div className="space-y-5">
-          {seeds.active ? (
-            <PairCard
-              title="Текущая пара сидов"
-              hash={seeds.active.serverSeedHash}
-              clientSeed={seeds.active.clientSeed}
-              nonce={seeds.active.nonce}
-              algorithm={seeds.active.algorithm}
-            />
+      {/* Главное на странице: состояние и одно действие. */}
+      <section className="glass-raised mt-6 p-5">
+        {rounds.rounds.length === 0 ? (
+          <>
+            <h2 className="text-base font-medium text-white">Раундов пока нет</h2>
+            <p className="mt-1.5 text-sm text-white/50">
+              Сыграйте в{' '}
+              <Link href={`/game/${game.slug}`} className="text-gold-300 hover:underline">
+                {game.title}
+              </Link>{' '}
+              — каждый раунд появится здесь вместе с данными для проверки.
+            </p>
+          </>
+        ) : waiting > 0 ? (
+          <>
+            <h2 className="text-base font-medium text-white">
+              {waiting} из {rounds.rounds.length} раундов ждут раскрытия сида
+            </h2>
+            <p className="mt-1.5 max-w-xl text-sm leading-6 text-white/50">
+              Пока сид скрыт, проверить раунды нельзя — в этом и смысл: никто, включая портал, не
+              мог знать исход заранее. Нажмите кнопку, чтобы раскрыть его. Это необратимо и
+              безопасно: раскрывается <b className="text-white/70">прошлый</b> сид, а для новых
+              раундов сразу создаётся новый.
+            </p>
+
+            <div className="mt-4 max-w-md">
+              <RotateSeedsForm gameSlug={game.slug} roundsWaiting={waiting} />
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="text-base font-medium text-white">
+              Все {verifiable} раундов проверяемы
+            </h2>
+            <p className="mt-1.5 text-sm text-white/50">
+              Сид раскрыт — нажмите «Проверить» у любого раунда, и браузер пересчитает его сам.
+            </p>
+          </>
+        )}
+      </section>
+
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="glass p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium text-white">Раунды</h2>
+            <span className="text-xs text-white/35">
+              {verifiable} проверяемо · {waiting} ждёт
+            </span>
+          </div>
+
+          {rounds.rounds.length === 0 ? (
+            <p className="mt-3 text-sm text-white/45">Пока пусто.</p>
           ) : (
-            <div className="card-gold rounded-2xl bg-ink-900/60 p-5 text-sm text-white/55">
-              Активной пары ещё нет. Она появится при первой же ставке в этой игре.
-            </div>
+            <ul className="mt-3 divide-y divide-white/5">
+              {rounds.rounds.slice(0, 12).map((round) => (
+                <li key={round.roundId} className="flex items-center gap-3 py-2.5">
+                  <span className="w-10 shrink-0 font-mono text-xs text-white/40">
+                    #{round.nonce ?? '—'}
+                  </span>
+
+                  <span className="min-w-0 flex-1 truncate text-xs text-white/50">
+                    ставка {round.amount}
+                    {round.payout ? ` · выигрыш ${round.payout}` : ''}
+                  </span>
+
+                  {round.verifiable ? (
+                    <Link
+                      href={`/fairness?game=${game.slug}&round=${round.roundId}`}
+                      className="shrink-0 rounded-lg bg-white/8 px-2.5 py-1 text-xs text-gold-300 transition-colors hover:bg-white/12"
+                    >
+                      Проверить
+                    </Link>
+                  ) : (
+                    <CopyRoundButton
+                      payload={[
+                        `nonce: ${round.nonce}`,
+                        `random: ${round.random}`,
+                        `clientSeed: ${round.clientSeed}`,
+                        `serverSeedHash: ${round.serverSeedHash}`,
+                      ].join('\n')}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
 
-          <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
-            <h3 className="text-sm font-semibold text-white">Раскрыть и начать заново</h3>
-            <div className="mt-3">
-              <RotateSeedsForm gameSlug={game.slug} />
-            </div>
-          </div>
-
-          {seeds.active && (
-            <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
-              <h3 className="text-sm font-semibold text-white">Свой клиентский сид</h3>
-              <p className="mt-1 text-xs leading-5 text-white/45">
-                Смените его перед игрой — сервер обязан использовать новый, и это будет видно при
-                проверке.
-              </p>
-              <div className="mt-3">
-                <ClientSeedForm gameSlug={game.slug} current={seeds.active.clientSeed} />
-              </div>
-            </div>
+          {rounds.rounds.length > 12 && (
+            <p className="mt-3 text-[11px] text-white/30">
+              Показаны последние 12 из {rounds.rounds.length}.
+            </p>
           )}
-        </div>
+        </section>
 
-        <div className="space-y-5">
-          <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
-            <h3 className="text-sm font-semibold text-white">Проверить раунд</h3>
-            {requestedRound && !revealedPair && (
-              <p className="mt-2 rounded-lg border border-gold-500/25 bg-gold-500/5 px-3 py-2 text-xs text-gold-300">
-                Пара этого раунда ещё не раскрыта — сид скрыт. Нажмите «Раскрыть», чтобы проверка
-                стала возможной.
-              </p>
-            )}
-            <div className="mt-3">
-              <RoundVerifier prefill={prefill} />
-            </div>
+        <section className="glass p-5">
+          <h2 className="text-sm font-medium text-white">Проверка</h2>
+
+          {requestedRound && !revealedPair && (
+            <p className="mt-2 text-xs leading-5 text-gold-300/80">
+              Сид этой пары ещё скрыт — раскройте его кнопкой выше, и проверка станет возможной.
+            </p>
+          )}
+
+          <div className="mt-3">
+            <RoundVerifier prefill={prefill} />
           </div>
-
-          <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
-            <h3 className="text-sm font-semibold text-white">Последние раунды</h3>
-
-            {rounds.rounds.length === 0 ? (
-              <p className="mt-2 text-xs text-white/45">
-                В этой игре вы ещё не играли. Раунды появятся здесь сразу после первой ставки.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-3">
-                {rounds.rounds.slice(0, 10).map((round) => (
-                  <li
-                    key={round.roundId}
-                    className="rounded-xl border border-white/8 bg-ink-950/50 p-3"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                      <span className="font-mono text-white/60">#{round.nonce ?? '—'}</span>
-                      <span className="text-white/45">
-                        ставка {round.amount}
-                        {round.payout ? ` · выигрыш ${round.payout}` : ''}
-                      </span>
-                    </div>
-
-                    <p className="mt-2 font-mono text-[10px] break-all text-white/35">
-                      {round.random ?? 'нет данных'}
-                    </p>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {round.verifiable ? (
-                        <Link
-                          href={`/fairness?game=${game.slug}&round=${round.roundId}`}
-                          className="rounded-lg border border-gold-500/40 bg-gold-500/15 px-3 py-1.5 text-xs font-semibold text-gold-300 hover:bg-gold-500/25"
-                        >
-                          Проверить
-                        </Link>
-                      ) : (
-                        <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/35">
-                          Пара не раскрыта
-                        </span>
-                      )}
-
-                      {round.random && (
-                        <CopyRoundButton
-                          payload={[
-                            `nonce: ${round.nonce}`,
-                            `random: ${round.random}`,
-                            `clientSeed: ${round.clientSeed}`,
-                            `serverSeedHash: ${round.serverSeedHash}`,
-                          ].join('\n')}
-                        />
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+        </section>
       </div>
+
+      <section className="glass mt-5 p-5">
+        <h2 className="text-sm font-medium text-white">Текущая пара</h2>
+
+        {seeds.active ? (
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Хэш серверного сида" value={seeds.active.serverSeedHash} />
+            <Field label="Клиентский сид" value={seeds.active.clientSeed} />
+            <Field label="Выдано раундов" value={String(seeds.active.nonce)} />
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-white/45">Появится при первой ставке в этой игре.</p>
+        )}
+
+        {seeds.active && (
+          <div className="mt-4 border-t border-white/5 pt-4">
+            <p className="text-xs text-white/40">
+              Свой клиентский сид — сервер обязан использовать новый, и это будет видно при
+              проверке.
+            </p>
+            <div className="mt-2 max-w-md">
+              <ClientSeedForm gameSlug={game.slug} current={seeds.active.clientSeed} />
+            </div>
+          </div>
+        )}
+      </section>
 
       {seeds.revealed.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold text-white">Раскрытые пары</h2>
-          <p className="mt-1 text-sm text-white/50">
-            Серверные сиды прошлых пар. Хэш каждой из них был опубликован до того, как вы сделали
-            первую ставку.
-          </p>
-
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {seeds.revealed.slice(0, 6).map((pair) => (
-              <PairCard
-                key={pair.id}
-                title={`Пара от ${new Date(pair.createdAt).toLocaleDateString('ru-RU')}`}
-                hash={pair.serverSeedHash}
-                clientSeed={pair.clientSeed}
-                nonce={pair.nonce}
-                serverSeed={pair.serverSeed}
-                revealedAt={pair.revealedAt}
-                algorithm={pair.algorithm}
-              />
+        <section className="glass mt-5 p-5">
+          <h2 className="text-sm font-medium text-white">Раскрытые пары</h2>
+          <ul className="mt-3 divide-y divide-white/5">
+            {seeds.revealed.slice(0, 5).map((pair) => (
+              <li key={pair.id} className="grid grid-cols-1 gap-3 py-3 sm:grid-cols-3">
+                <Field label="Серверный сид" value={pair.serverSeed ?? ''} />
+                <Field label="Хэш" value={pair.serverSeedHash} />
+                <Field
+                  label="Раскрыта"
+                  value={new Date(pair.revealedAt ?? pair.createdAt).toLocaleDateString('ru-RU')}
+                />
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       )}
 
-      <section className="mt-10 rounded-2xl border border-white/10 bg-ink-900/60 p-5 text-xs leading-6 text-white/45">
-        <h2 className="text-sm font-semibold text-white">Как это работает</h2>
+      <details className="glass mt-5 p-5">
+        <summary className="cursor-pointer text-sm font-medium text-white">
+          Как это работает
+        </summary>
 
-        <ol className="mt-3 list-decimal space-y-1.5 pl-5">
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-xs leading-6 text-white/45">
+          <li>Портал создаёт серверный сид и сразу публикует его хэш. Сам сид скрыт.</li>
           <li>
-            Портал создаёт серверный сид и сразу публикует его хэш —{' '}
-            <code className="text-white/65">sha256(сид)</code>. Сам сид скрыт.
-          </li>
-          <li>
-            У вас есть клиентский сид. Вы можете его сменить в любой момент, и сервер обязан
-            использовать новый.
+            Клиентский сид виден вам, и вы можете его сменить — сервер обязан использовать новый.
           </li>
           <li>
             Случайность раунда:{' '}
-            <code className="text-white/65">
-              HMAC-SHA256(серверный сид, клиентский сид : номер раунда)
-            </code>
+            <span className="font-mono text-white/60">
+              HMAC-SHA256(серверный сид, клиентский сид : номер)
+            </span>
             . Номер растёт и не повторяется.
           </li>
           <li>
             Игра превращает это число в исход по своей таблице весов. Подсунуть своё число она не
-            может: сервер знает сид и пересчитывает результат, а расхождение отклоняет ставку.
+            может: портал пересчитывает результат и отклоняет ставку при расхождении.
           </li>
-          <li>
-            Нажав «Раскрыть», вы получаете серверный сид и можете проверить каждый сыгранный раунд —
-            здесь, в браузере, без участия портала.
-          </li>
+          <li>Раскрыв сид, вы проверяете каждый раунд здесь, в браузере — без участия портала.</li>
         </ol>
 
-        <p className="mt-4">
-          Чего эта схема не доказывает: что игра отобразила полученное число честно. За это отвечает
-          автор игры, поэтому «Случайность раунда» сохраняется в журнале и её видно на этой
-          странице.
+        <p className="mt-4 text-xs leading-6 text-white/35">
+          Чего схема не доказывает: что игра отобразила полученное число честно. За это отвечает
+          автор игры, поэтому случайность раунда сохраняется в журнале и видна рядом с исходом.
         </p>
-
-        <p className="mt-3">
-          Игра: {game.title} · статус {GAME_STATUS_LABELS[game.launchable ? 'live' : 'pending']} ·{' '}
-          <Link href={`/game/${game.slug}`} className="text-gold-300 hover:underline">
-            открыть игру
-          </Link>
-        </p>
-      </section>
+      </details>
     </main>
   )
 }

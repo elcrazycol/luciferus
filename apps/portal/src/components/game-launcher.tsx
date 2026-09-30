@@ -4,9 +4,8 @@ import { formatAmount } from '@luciferus/config/currency'
 import type { GameLaunch } from '@luciferus/protocol/embed'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { useLiveBalance } from '@/components/live-balance'
 import { createEmbedBridge, type EmbedBridge, type EmbedBridgeState } from '@/lib/embed-bridge'
-
-const BALANCE_POLL_MS = 10_000
 
 function StatusBar({
   state,
@@ -90,7 +89,8 @@ export function GameLauncher({ launch }: { launch: GameLaunch }) {
   const bridgeRef = useRef<EmbedBridge | null>(null)
 
   const [state, setState] = useState<EmbedBridgeState>({ status: 'connecting' })
-  const [balance, setBalance] = useState(launch.wallet.balance)
+  const live = useLiveBalance()
+  const balance = live.balance ?? launch.wallet.balance
 
   useEffect(() => {
     const iframe = iframeRef.current
@@ -123,35 +123,15 @@ export function GameLauncher({ launch }: { launch: GameLaunch }) {
     }
   }, [launch])
 
-  // Пока игрок в игре, портал подтягивает баланс и отдаёт его игре — чтобы счётчик
-  // в интерфейсе игры совпадал с настоящим, а не с тем, что игра помнит у себя.
+  /**
+   * Баланс приходит потоком событий, а не опросом раз в десять секунд: счётчик
+   * в игре обновляется сразу после ставки, и портал не долбит API вхолостую.
+   */
   useEffect(() => {
-    if (state.status !== 'ready') return
+    if (state.status !== 'ready' || !live.balance) return
 
-    let cancelled = false
-
-    const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const response = await fetch('/api/wallet/balance', { cache: 'no-store' })
-          if (!response.ok || cancelled) return
-
-          const payload = (await response.json()) as { balance?: string }
-          if (cancelled || typeof payload.balance !== 'string') return
-
-          setBalance(payload.balance)
-          bridgeRef.current?.pushBalance(payload.balance)
-        } catch {
-          // Недоступный портал не должен ломать игру, которая уже идёт.
-        }
-      })()
-    }, BALANCE_POLL_MS)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [state.status])
+    bridgeRef.current?.pushBalance(live.balance)
+  }, [state.status, live.balance])
 
   return (
     <div className="overflow-hidden rounded-2xl">

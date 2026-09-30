@@ -1,100 +1,79 @@
 import { formatAmount } from '@luciferus/config/currency'
-import {
-  GAME_CATEGORY_LABELS,
-  GAME_VOLATILITY_LABELS,
-  type GameCard,
-} from '@luciferus/protocol/game'
+import { GAME_CATEGORY_LABELS, type GameCard } from '@luciferus/protocol/game'
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 
-function Badge({ children, tone = 'muted' }: { children: ReactNode; tone?: 'muted' | 'gold' }) {
-  const styles =
-    tone === 'gold'
-      ? 'border-gold-500/30 bg-gold-500/10 text-gold-300'
-      : 'border-white/10 bg-white/5 text-white/60'
-
-  return <span className={`rounded-full border px-2 py-0.5 text-[11px] ${styles}`}>{children}</span>
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="text-[11px] text-white/40">
-      {label} <b className="text-white/65">{value}</b>
-    </span>
-  )
-}
-
+/**
+ * Карточка игры.
+ *
+ * Минимум текста: название, студия, одна строка фактов и действие. Всё
+ * остальное — на странице игры. Карточка в каталоге нужна, чтобы выбрать, а не
+ * чтобы изучить.
+ */
 export function GameCardTile({ game }: { game: GameCard }) {
   const initial = game.title.slice(0, 1).toUpperCase()
-  const rtpPercent = game.rtp ? `${(Number.parseFloat(game.rtp) * 100).toFixed(2)}%` : null
+  const rtp = game.rtp ? `${(Number.parseFloat(game.rtp) * 100).toFixed(1)}%` : null
   const biggestWin = Number.parseFloat(game.stats.biggestWin ?? '0')
 
+  const category = game.categories[0]
+    ? (GAME_CATEGORY_LABELS[game.categories[0] as keyof typeof GAME_CATEGORY_LABELS] ??
+      game.categories[0])
+    : null
+
+  const facts = [
+    category,
+    rtp ? `RTP ${rtp}` : null,
+    game.stats.plays > 0 ? `${game.stats.plays} ставок` : null,
+  ].filter(Boolean)
+
   return (
-    <article className="card-gold flex flex-col overflow-hidden rounded-2xl bg-ink-900/70">
-      <div className="relative flex h-40 items-center justify-center bg-gradient-to-br from-ink-800 via-ink-850 to-ink-900">
-        <span className="text-gold-gradient text-6xl font-black">{initial}</span>
+    <article className="glass glass-hover flex flex-col overflow-hidden">
+      <div className="relative flex h-32 items-center justify-center bg-white/[0.02]">
+        <span className="text-gold-gradient text-5xl font-black">{initial}</span>
 
-        <span className="absolute top-3 left-3 rounded-full border border-gold-500/30 bg-ink-950/70 px-2 py-0.5 text-[10px] tracking-wide text-gold-300 uppercase">
-          {game.fairMode === 'provably-fair' ? 'проверяемый рандом' : 'доверенный рандом'}
-        </span>
-
-        {game.isStub && (
-          <span className="absolute top-3 right-3 rounded-full border border-white/10 bg-ink-950/70 px-2 py-0.5 text-[10px] text-white/50">
-            заглушка
+        {game.fairMode === 'provably-fair' && (
+          <span
+            title="Исход каждого раунда можно проверить"
+            className="absolute top-3 right-3 rounded-full bg-black/30 px-2 py-0.5 text-[10px] text-mint-500 backdrop-blur-sm"
+          >
+            проверяемый
           </span>
         )}
       </div>
 
       <div className="flex flex-1 flex-col gap-3 p-4">
-        <div>
-          <h3 className="text-base font-semibold text-white">{game.title}</h3>
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-medium text-white">{game.title}</h3>
           {game.providerSlug ? (
             <Link
               href={`/providers/${game.providerSlug}`}
-              className="text-xs text-white/45 hover:text-gold-300"
+              className="text-xs text-white/40 transition-colors hover:text-gold-300"
             >
               {game.providerName}
-              {game.providerVerified ? ' · проверен' : ''}
             </Link>
           ) : (
-            <p className="text-xs text-white/45">Без студии</p>
+            <span className="text-xs text-white/40">без студии</span>
           )}
         </div>
 
-        <p className="line-clamp-2 text-sm text-white/60">{game.description}</p>
+        {facts.length > 0 && <p className="text-[11px] text-white/35">{facts.join(' · ')}</p>}
 
-        <div className="flex flex-wrap gap-1.5">
-          {game.categories.map((category) => (
-            <Badge key={category}>
-              {GAME_CATEGORY_LABELS[category as keyof typeof GAME_CATEGORY_LABELS] ?? category}
-            </Badge>
-          ))}
-          {rtpPercent && <Badge tone="gold">RTP {rtpPercent}</Badge>}
-          {game.volatility && (
-            <Badge>
-              {GAME_VOLATILITY_LABELS[game.volatility as keyof typeof GAME_VOLATILITY_LABELS] ??
-                game.volatility}
-            </Badge>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <Stat label="ставок:" value={String(game.stats.plays)} />
-          <Stat label="мин. ставка:" value={formatAmount(game.limits.minBet)} />
-          {biggestWin > 0 && <Stat label="макс. выигрыш:" value={formatAmount(biggestWin)} />}
-        </div>
+        {biggestWin > 0 && (
+          <p className="text-[11px] text-white/35">
+            макс. выигрыш <span className="text-gold-300">{formatAmount(biggestWin)}</span>
+          </p>
+        )}
 
         {game.launchable ? (
           <Link
             href={`/game/${game.slug}`}
-            className="mt-auto w-full rounded-xl border border-gold-500/40 bg-gold-500/15 px-3 py-2 text-center text-sm font-semibold text-gold-300 transition-colors hover:bg-gold-500/25"
+            className="mt-auto rounded-xl border border-white/12 bg-white/6 py-2 text-center text-sm text-white/85 transition-colors hover:bg-white/12"
           >
             Играть
           </Link>
         ) : (
           <span
             title="Игра не объявила свой origin — портал не сможет её запустить"
-            className="mt-auto w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-center text-sm font-medium text-white/35"
+            className="mt-auto cursor-not-allowed rounded-xl border border-white/6 py-2 text-center text-sm text-white/25"
           >
             Не подключена
           </span>

@@ -25,7 +25,7 @@ export function ModerationCard({
   const [noteOpen, setNoteOpen] = useState(false)
 
   return (
-    <div className="card-gold rounded-2xl bg-ink-900/60 p-5">
+    <div className="glass rounded-2xl bg-ink-900/60 p-5">
       {children}
 
       <form action={action} className="mt-4 border-t border-white/5 pt-4">
