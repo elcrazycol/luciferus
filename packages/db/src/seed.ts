@@ -10,7 +10,16 @@ import { games, gameVersions, ledger, providers, users, wallets } from './schema
  * Идемпотентны — можно гонять сколько угодно раз, повторные вставки пропускаются.
  */
 
-export type SeedUser = {
+export /**
+ * Откуда берётся эталонная игра.
+ *
+ * Локально это её собственный dev-сервер на :4000 — так проверяется настоящий
+ * сценарий с чужим origin. В проде игра отдаётся порталом, поэтому адрес другой.
+ */
+const EXAMPLE_GAME_URL = process.env.EXAMPLE_GAME_URL ?? 'http://localhost:4000/'
+const EXAMPLE_GAME_ORIGIN = new URL(EXAMPLE_GAME_URL).origin
+
+type SeedUser = {
   username: string
   displayName: string
   password: string
@@ -160,9 +169,9 @@ export const SEED_GAMES: SeedGame[] = [
     description: 'Классический трёхбарабанный слот. Три семёрки — и вечер удался.',
     providerSlug: 'luciferus-originals',
     // Эталонная игра из apps/example-game: единственная в сидах, которую
-    // действительно можно запустить. Порт совпадает с её dev-сервером.
-    embedUrl: 'http://localhost:4000/',
-    allowedOrigins: ['http://localhost:4000'],
+    // действительно можно запустить.
+    embedUrl: EXAMPLE_GAME_URL,
+    allowedOrigins: [EXAMPLE_GAME_ORIGIN],
     categories: ['slots', 'classic'],
     tags: ['7s', 'classic', '3-reels'],
     fairMode: 'provably-fair',

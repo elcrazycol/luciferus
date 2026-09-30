@@ -57,9 +57,13 @@ const server = Bun.serve({
     if (url.pathname === '/' || url.pathname === '/index.html') {
       const html = await Bun.file(resolve(SOURCE_DIR, 'index.html')).text()
 
-      return new Response(html.replaceAll('__PORTAL_URL__', PORTAL_URL), {
-        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-      })
+      // __GAME_BASE__ пустой: локально игра живёт в корне своего домена.
+      return new Response(
+        html.replaceAll('__PORTAL_URL__', PORTAL_URL).replaceAll('__GAME_BASE__', ''),
+        {
+          headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+        },
+      )
     }
 
     const requested = resolve(PUBLIC_DIR, `.${url.pathname}`)

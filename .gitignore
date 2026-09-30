@@ -46,3 +46,4 @@ coverage/
 apps/portal/public/sdk/
 # собранная эталонная игра
 apps/example-game/public/
+apps/portal/public/example-game/

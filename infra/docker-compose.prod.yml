@@ -122,6 +122,23 @@ services:
       - '127.0.0.1:${PORTAL_HOST_PORT:-8080}:3000'
     mem_limit: 224m
 
+  # Эталонная игра. Живёт на своём домене, поэтому origin у неё свой — именно
+  # на этом держится проверка origin в хендшейке.
+  game:
+    <<: *restart
+    build:
+      context: ..
+      dockerfile: apps/example-game/Dockerfile
+    image: luciferus-game:${IMAGE_TAG:-local}
+    environment:
+      NODE_ENV: production
+      EXAMPLE_GAME_PORT: '4000'
+      # SDK игра берёт с портала: он один на всю платформу.
+      PORTAL_URL: ${PORTAL_URL:?задайте PORTAL_URL в .env}
+    ports:
+      - '127.0.0.1:${GAME_HOST_PORT:-4000}:4000'
+    mem_limit: 96m
+
   # Туннель Cloudflare: способ отдать домен, не занимая ни одного порта.
   #
   # Нужен там, где 80 и 443 уже заняты чужими сервисами, а certbot держит 80 для
@@ -139,7 +156,9 @@ services:
       - --no-autoupdate
       - run
       - --token
-      - ${CLOUDFLARE_TUNNEL_TOKEN:?задайте CLOUDFLARE_TUNNEL_TOKEN в .env}
+      # Не `:?`: compose проверяет переменные даже у сервисов в неактивных
+      # профилях, и требование токена ломало бы все остальные команды.
+      - ${CLOUDFLARE_TUNNEL_TOKEN:-}
     # Сеть хоста: в панели Cloudflare адрес источника обычно указывают как
     # `http://localhost:8080`, а портал как раз опубликован на 127.0.0.1:8080.
     network_mode: host
@@ -158,6 +177,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-luciferus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-luciferus}
+      EXAMPLE_GAME_URL: ${EXAMPLE_GAME_URL:-http://localhost:4000/}
     command: ['bun', 'run', 'packages/db/src/migrate.ts']
     mem_limit: 128m
 
@@ -173,6 +193,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-luciferus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-luciferus}
+      EXAMPLE_GAME_URL: ${EXAMPLE_GAME_URL:-http://localhost:4000/}
     command: ['bun', 'run', 'packages/db/src/seed.ts']
     mem_limit: 128m
 
